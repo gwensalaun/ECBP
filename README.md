@@ -19,7 +19,9 @@ Required Software
 Usage
 =======================================
 
-python3 compare.py ex1.bpmn ex2.bpmn box|full
+Move to the main directory, and use the following command:
+
+$ python3 compare.py ex1.bpmn ex2.bpmn box|full
 
 where
 
