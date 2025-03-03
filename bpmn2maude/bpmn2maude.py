@@ -1,5 +1,5 @@
 #
-# Name:    bpmn2maude.py - Generates a Maude file given a BPMN process
+# Name: bpmn2maude.py - Generates a Maude file given a BPMN process
 #
 # Authors: Gwen and Paco
 #
