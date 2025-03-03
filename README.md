@@ -2,10 +2,7 @@
 Efficient Comparison of BPMN Processes
 ==============================
 
-This tool automatically compares two BPMN processes from a semantic point of view.
-In order to compute this comparison efficiently, it works by detecting the syntactic differences between the two processes, and then compares the semantic models (Labelled Transition Systems) of both processes only for these differences.
-This procedure thus avoids the comparison of the entire semantic models, which may be very costly.
-The semantic comparison is achieved using existing behavioural equivalences and bisimulations.
+This tool automatically compares two BPMN processes from a semantic point of view. In order to compute this comparison efficiently, it works by detecting the syntactic differences between the two processes, and then compares the semantic models (Labelled Transition Systems) of both processes only for these differences. This procedure thus avoids the comparison of the entire semantic models, which may be very costly. The semantic comparison is achieved using existing behavioural equivalences and bisimulations.
 
 
 Required Software
