@@ -1,8 +1,8 @@
 #
-# Name:    compare.py - Efficient semantic comparison of two BPMN processes
+# Name: compare.py - Efficient semantic comparison of two BPMN processes
 #
 # Authors: Gwen and Paco
-# Date:    2023
+# 
 ###############################################################################
 
 import sys
