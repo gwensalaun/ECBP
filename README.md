@@ -12,8 +12,8 @@ Required Software
 =======================================
 
 * [CADP](https://cadp.inria.fr/)
-* [Maude] (https://maude.cs.illinois.edu/wiki/The_Maude_System)
-* [Python3] (https://www.python.org/)
+* [Maude](https://maude.cs.illinois.edu/wiki/The_Maude_System)
+* [Python3](https://www.python.org/)
 
 
 Usage
