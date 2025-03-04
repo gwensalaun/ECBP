@@ -1,8 +1,8 @@
 #
-# Name: compare.py - Efficient semantic comparison of two BPMN processes
+# Name:    compare.py - Efficient semantic comparison of two BPMN processes
 #
 # Authors: Gwen and Paco
-# 
+# Date:    2023
 ###############################################################################
 
 import sys
@@ -20,31 +20,26 @@ def clean ():
 
 if __name__ == '__main__':
 
-    # CAUTION: replace with your own local path..
-    # sys.path.insert(0, '/Users/duran/git/workflowrefactoring/TOOLS/bpmn2maude')
-    # sys.path.insert(0, '/Users/salaung/WORK/TOOLS/REFACTORING/workflowrefactoring/TOOLS/bpmn2maude')
     sys.path.insert(0, '../bpmn2maude')
 
     from bpmn2maude import *
 
-    # script format -> python3 compare.py p1.bpmn p2.bpmn option
-    # with option = full | box
-
-    if (len(sys.argv)<4):
+    if (len(sys.argv)<5):
 
         print("Erroneous number of parameters, missing parameters !")
-        print("Expected syntax: python3 compare.py ex1.bpmn ex2.bpmn box|full")
+        print("Expected syntax: python3 compare.py ex1.bpmn ex2.bpmn box|full branching|trace|safety")
 
-    elif (len(sys.argv)>4):
+    elif (len(sys.argv)>5):
 
         print("Erroneous number of parameters, too many parameters !")
-        print("Expected syntax: python3 compare.py ex1.bpmn ex2.bpmn box|full")
+        print("Expected syntax: python3 compare.py ex1.bpmn ex2.bpmn box|full branching|trace|safety")
 
     else:
 
         f1 = sys.argv[1]
         f2 = sys.argv[2]
         option = sys.argv[3]
+        equiv = sys.argv[4]
 
         # step 1. transform bpmn to maude
 
@@ -77,7 +72,7 @@ if __name__ == '__main__':
             tf2.erewrite()
             call('bcg_io '+ident1+'.aut .bcg', shell=True)
             call('bcg_io '+ident2+'.aut .bcg', shell=True)
-            res=call('bcg_open '+ident1+'.bcg bisimulator -branching -diag diag.bcg '+ident2+'.bcg', shell=True)
+            res=call('bcg_open '+ident1+'.bcg bisimulator -'+equiv+' -diag diag.bcg '+ident2+'.bcg', shell=True)
             clean()
 
         else:
@@ -99,11 +94,11 @@ if __name__ == '__main__':
                     for i in range(nbcouples):
                         call('bcg_io output_'+ident1+"-"+ident2+'_'+str(i)+'_0.aut .bcg', shell=True)
                         call('bcg_io output_'+ident1+"-"+ident2+'_'+str(i)+'_1.aut .bcg', shell=True)
-                        res=call('bcg_open output_'+ident1+"-"+ident2+'_'+str(i)+'_0.bcg bisimulator -branching -diag diag.bcg output_'+ident1+"-"+ident2+'_'+str(i)+'_1.bcg', shell=True)
+                        res=call('bcg_open output_'+ident1+"-"+ident2+'_'+str(i)+'_0.bcg bisimulator -'+equiv+' -diag diag.bcg output_'+ident1+"-"+ident2+'_'+str(i)+'_1.bcg', shell=True)
 
                 else:
                     call('bcg_io output_'+ident1+"-"+ident2+'_0_0.aut .bcg', shell=True)
                     call('bcg_io output_'+ident1+"-"+ident2+'_0_1.aut .bcg', shell=True)
-                    res=call('bcg_open output_'+ident1+"-"+ident2+'_0_0.bcg bisimulator -branching -diag diag.bcg output_'+ident1+"-"+ident2+'_0_1.bcg', shell=True)
+                    res=call('bcg_open output_'+ident1+"-"+ident2+'_0_0.bcg bisimulator -'+equiv+' -diag diag.bcg output_'+ident1+"-"+ident2+'_0_1.bcg', shell=True)
 
                 clean()
