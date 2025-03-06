@@ -18,13 +18,15 @@ Usage
 
 Move to the main directory, and use the following command:
 
-$ python3 compare.py ex1.bpmn ex2.bpmn box|full
+$ python3 compare.py ex1.bpmn ex2.bpmn box|full branching|safety|trace
 
 where
 
 - ex1.bpmn and ex2.bpmn are BPMN processes in BPMN2 XML
+
 - box or full are options, box implements the matching algorithm whereas full implies the generation and comparison of the entire semantic models
 
+- (rooted) branching, safety or trace are equivalence relations that can be used in this work and preserve the correctness of the results
 
 Contributors
 =====================================
