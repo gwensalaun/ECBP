@@ -1,0 +1,907 @@
+---- authors: Francisco Duran and Gwen Salaun
+---- file: lts.maude
+----
+---- This file contains the definitions for the representation of LTS models
+
+sload identifier.maude
+
+---- States ------------------------------------------------------------------
+fmod STATE is
+  pr IDENTIFIER .
+
+  sort State .
+  op state : Id -> State [ctor] .
+endfm
+
+view State from TRIV to STATE is
+  sort Elt to State .
+endv
+
+---- Transitions ----------------------------------------------------------
+fmod TRANSITION is
+  pr STATE .
+
+  sort Transition .
+  op transition : State Id State -> Transition [ctor] .
+endfm
+
+view Transition from TRIV to TRANSITION is
+  sort Elt to Transition .
+endv
+
+---- LTS ----------------------------------------------------------------
+omod LTS is
+  pr SET{State} .
+  pr SET{Transition} .
+  pr SET{Id} .
+  pr CONVERSION .
+  pr MAP{State, Nat} .
+
+  subsort Id < Oid . ---- PIds are valid object ids
+
+  ---- LTS ------------------------------------------------------------
+  class LTS | initial : State, states : Set{State}, transitions : Set{Transition}, alphabet : Set{Id} .
+
+  --- strong bisimulation as defined by R. Milner
+  op bisim : Object Object -> Bool .
+  op bisimRec : State State Object Object Set{State} Set{State} -> Bool .
+  op noOutgoingTransitions : State Set{Transition} -> Bool .
+  op outgoingTransitions : State Set{Transition} -> Bool .
+
+  --- strong simulation, the first one is simulated by the second one
+  op sim : Object Object -> Bool .
+  op simRec : State State Object Object Set{State} -> Bool .
+  op noMatchingTransition : State Set{Transition} Transition -> Bool .
+
+  --- branching bisimulation as defined by R. van Glabbeek
+  op tbisim : Object Object -> Bool .
+  op tbisimRec : State State Object Object Set{State} Set{State} -> Bool .
+
+  op ex1 : -> Object .
+  op ex2 : -> Object .
+  op ex3 : -> Object .
+  op ex4 : -> Object .
+  op ex5 : -> Object .
+  op ex6 : -> Object .
+  op ex7 : -> Object .
+  op ex8 : -> Object .
+  op ex9 : -> Object .
+  op ex10 : -> Object .
+  op ex11 : -> Object .
+
+  vars LTS1 LTS2 : Oid .
+  vars S S1 S11 S2 S22 : State .
+  vars O O1 O2 : Object .
+  vars T1 T2 T1' T2' Trs : Set{Transition} .
+  vars L L1 L2 : Id .
+  vars VIS1 VIS2 Sts : Set{State} .
+  vars Trans : Transition .
+  var  M : Map{State, Nat} .
+  var  I I1 I2 : Nat .
+  var  Str : String .
+
+  ---- Takes an object representing an LTS and gives back a string with its AUT representation
+  op toString : Object ~> String .
+  op toString : Object Map{State, Nat} Nat String -> String .
+  eq toString(< LTS1 : LTS | initial : S, states : (S, Sts), transitions : Trs >) 
+   = toString(< LTS1 : LTS | states : Sts >, S |-> 0, 1, 
+       "des(0, " + string(| Trs |, 10) + ", " + string(s | Sts |, 10) + ")") .
+  eq toString(< LTS1 : LTS | states : (S, Sts) >, M, I, Str) 
+   = toString(< LTS1 : LTS | states : Sts >, (M, S |-> I), s I, Str) .
+  eq toString(< LTS1 : LTS | transitions : (transition(S1, L, S2), Trs) >, (M, S1 |-> I1, S2 |-> I2), I, Str) 
+   = toString(< LTS1 : LTS | transitions : Trs >, (M, S1 |-> I1, S2 |-> I2), I, 
+       Str + "\n" + "(" + string(I1, 10) + ", \"" + L + "\", " + string(I2, 10) + ")") .
+  eq toString(< LTS1 : LTS | transitions : empty >, M, I, Str) = Str .
+
+  --- strong bisimulation (equations)
+  eq bisim(
+       < LTS1 : LTS | initial : S1 >,
+       < LTS2 : LTS | initial : S2 >
+       )
+     = bisimRec(S1, S2, < LTS1 : LTS | >, < LTS2 : LTS | >, empty, empty) .
+
+  --- rule with matching transitions, recursive calls and one unvisited state
+  ceq bisimRec(
+      S1,
+      S2,
+      < LTS1 : LTS | transitions : (transition(S1, L, S11), T1) >,
+      < LTS2 : LTS | transitions : (transition(S2, L, S22), T2) >,
+      VIS1,
+      VIS2
+      )
+    = bisimRec(
+        S1,
+        S2,
+        < LTS1 : LTS | transitions : (T1) >,
+        < LTS2 : LTS | transitions : (T2) >,
+        VIS1,
+        VIS2
+        )
+        and
+        bisimRec(S11, S22,
+        < LTS1 : LTS | transitions : (transition(S1, L, S11), T1) >,
+        < LTS2 : LTS | transitions : (transition(S2, L, S22), T2) >,
+        (S1, VIS1),
+        (S2, VIS2)
+        )
+    if not (S1 in VIS1 and S2 in VIS2) . --- at least one state has not been visited
+
+  --- rule with matching transitions, but visited states
+  ceq bisimRec(
+      S1,
+      S2,
+      < LTS1 : LTS | transitions : (transition(S1, L, S11), T1) >,
+      < LTS2 : LTS | transitions : (transition(S2, L, S22), T2) >,
+      VIS1,
+      VIS2
+      )
+    = true
+    if (S1 in VIS1 and S2 in VIS2) . --- both target states already visited
+
+  --- two states without outgoing transitions are bisimilar
+  ceq bisimRec(
+      S1,
+      S2,
+      < LTS1 : LTS | transitions : T1 >,
+      < LTS2 : LTS | transitions : T2 >,
+      VIS1,
+      VIS2
+      )
+    = true
+    if noOutgoingTransitions(S1, T1) /\ noOutgoingTransitions(S2, T2) .
+
+  eq bisimRec(S1, S2, O1, O2, VIS1, VIS2)
+    = false [owise] .
+
+  --- this operation checks whether one state does not have any outgoing transition
+  eq noOutgoingTransitions(S1, (transition(S1, L, S11), T1))
+    = false .
+  eq noOutgoingTransitions(S1, T1)
+    = true [owise] .
+
+  --- this operation checks whether one state has any outgoing transition
+  eq outgoingTransitions(S1, (transition(S1, L, S11), T1))
+    = true .
+  eq outgoingTransitions(S1, T1)
+    = false [owise] .
+
+  --- branching bisimulation (equations)
+  eq tbisim(
+       < LTS1 : LTS | initial : S1 >,
+       < LTS2 : LTS | initial : S2 >
+       )
+     = tbisimRec(S1, S2, < LTS1 : LTS | >, < LTS2 : LTS | >, empty, empty) .
+
+  --- rule with matching transitions, recursive call and one unvisited state
+  ceq [tbisimRec-samelabel]: tbisimRec(
+      S1,
+      S2,
+      < LTS1 : LTS | transitions : (transition(S1, L, S11), T1) >,
+      < LTS2 : LTS | transitions : (transition(S2, L, S22), T2) >,
+      VIS1,
+      VIS2
+      )
+    = tbisimRec(  --- recursive call if both T1 and T2 are not empty
+        S1,
+        S2,
+        < LTS1 : LTS | transitions : (T1) >,  --- TODO: remove transition ?
+        < LTS2 : LTS | transitions : (T2) >,
+        VIS1,
+        VIS2
+        )
+        and
+        tbisimRec(S11, S22,
+        < LTS1 : LTS | transitions : (transition(S1, L, S11), T1) >,
+        < LTS2 : LTS | transitions : (transition(S2, L, S22), T2) >,
+        (S1, VIS1),
+        (S2, VIS2)
+        )
+    if not (S1 in VIS1 and S2 in VIS2) /\ (L =/= "tau") /\ outgoingTransitions(S1, T1) /\ outgoingTransitions(S2, T2) .
+    --- at least one state has not been visited
+
+  --- rule with matching transitions, NO recursive call and one unvisited state
+  ceq [tbisimRec-samelabel-bis]: tbisimRec(
+      S1,
+      S2,
+      < LTS1 : LTS | transitions : (transition(S1, L, S11), T1) >,
+      < LTS2 : LTS | transitions : (transition(S2, L, S22), T2) >,
+      VIS1,
+      VIS2
+      )
+    = tbisimRec(S11, S22,
+        < LTS1 : LTS | transitions : (transition(S1, L, S11), T1) >,
+        < LTS2 : LTS | transitions : (transition(S2, L, S22), T2) >,
+        (S1, VIS1),
+        (S2, VIS2)
+        )
+    if not (S1 in VIS1 and S2 in VIS2) /\ (L =/= "tau") /\ noOutgoingTransitions(S1, T1) /\ noOutgoingTransitions(S2, T2) .
+    --- at least one state has not been visited
+
+  --- rules with tau action (skip) + rec. call -> for first LTS
+  ceq [tbisimRec-tau1]: tbisimRec(
+      S1,
+      S2,
+      < LTS1 : LTS | transitions : (transition(S1, "tau", S11), T1) >,
+      < LTS2 : LTS | transitions : T2 >,
+      VIS1,
+      VIS2
+      )
+    = tbisimRec(
+        S1,
+        S2,
+        < LTS1 : LTS | transitions : (T1) >,
+        < LTS2 : LTS | transitions : T2 >,
+        VIS1,
+        VIS2
+        )
+        and
+        tbisimRec(S11, S2,
+        < LTS1 : LTS | transitions : (transition(S1, "tau", S11), T1) >,
+        < LTS2 : LTS | transitions : T2 >,
+        (S1, VIS1),
+        VIS2
+        )
+    if not (S1 in VIS1) and outgoingTransitions(S1, T1) .
+
+  --- rules with tau action (skip) + NO rec. call -> for first LTS
+  ceq [tbisimRec-tau1-bis]: tbisimRec(
+      S1,
+      S2,
+      < LTS1 : LTS | transitions : (transition(S1, "tau", S11), T1) >,
+      < LTS2 : LTS | transitions : T2 >,
+      VIS1,
+      VIS2
+      )
+    = tbisimRec(S11, S2,
+        < LTS1 : LTS | transitions : (transition(S1, "tau", S11), T1) >,
+        < LTS2 : LTS | transitions : T2 >,
+        (S1, VIS1),
+        VIS2
+        )
+    if not (S1 in VIS1) and noOutgoingTransitions(S1, T1) .
+
+  --- rules with tau action (skip) + rec. call -> for second LTS
+  ceq [tbisimRec-tau2]: tbisimRec(
+      S1,
+      S2,
+      < LTS1 : LTS | transitions : T1 >,
+      < LTS2 : LTS | transitions : (transition(S2, "tau", S22), T2) >,
+      VIS1,
+      VIS2
+      )
+    = tbisimRec(
+        S1,
+        S2,
+        < LTS1 : LTS | transitions : T1 >,
+        < LTS2 : LTS | transitions : (T2) >,
+        VIS1,
+        VIS2
+        )
+        and
+        tbisimRec(S1, S22,
+        < LTS1 : LTS | transitions : T1 >,
+        < LTS2 : LTS | transitions : (transition(S2, "tau", S22), T2) >,
+        VIS1,
+        (S2, VIS2)
+        )
+    if not (S2 in VIS2) and outgoingTransitions(S2, T2) .
+
+  --- rules with tau action (skip) + NO rec. call -> for second LTS
+  ceq [tbisimRec-tau2-bis]: tbisimRec(
+      S1,
+      S2,
+      < LTS1 : LTS | transitions : T1 >,
+      < LTS2 : LTS | transitions : (transition(S2, "tau", S22), T2) >,
+      VIS1,
+      VIS2
+      )
+    = tbisimRec(S1, S22,
+        < LTS1 : LTS | transitions : T1 >,
+        < LTS2 : LTS | transitions : (transition(S2, "tau", S22), T2) >,
+        VIS1,
+        (S2, VIS2)
+        )
+    if not (S2 in VIS2) and noOutgoingTransitions(S2, T2) .
+
+  --- rule with matching transitions, but visited states
+  ceq [tbisimRec-alreadyvisited]: tbisimRec(
+      S1,
+      S2,
+      < LTS1 : LTS | transitions : (transition(S1, L, S11), T1) >,
+      < LTS2 : LTS | transitions : (transition(S2, L, S22), T2) >,
+      VIS1,
+      VIS2
+      )
+    = true
+    if (S1 in VIS1 and S2 in VIS2) . --- both target states already visited
+
+  --- two states without outgoing transitions are bisimilar
+  ceq [tbisimRec-noouttrans]: tbisimRec(
+      S1,
+      S2,
+      < LTS1 : LTS | transitions : T1 >,
+      < LTS2 : LTS | transitions : T2 >,
+      VIS1,
+      VIS2
+      )
+    = true
+    if noOutgoingTransitions(S1, T1) /\ noOutgoingTransitions(S2, T2) .
+
+  eq [tbisimRec-owise-false]: tbisimRec(S1, S2, O1, O2, VIS1, VIS2)
+    = false [owise] .
+
+
+
+  --- strong simulation (equations)
+  eq sim(
+       < LTS1 : LTS | initial : S1 >,
+       < LTS2 : LTS | initial : S2 >
+       )
+     = simRec(S1, S2, < LTS1 : LTS | >, < LTS2 : LTS | >, empty) .
+
+  --- rule with matching transitions, recursive calls and one unvisited state
+  ceq simRec(
+      S1,
+      S2,
+      < LTS1 : LTS | transitions : (transition(S1, L, S11), T1) >,
+      < LTS2 : LTS | transitions : (transition(S2, L, S22), T2) >,
+      VIS1
+      )
+    = simRec(
+        S1,
+        S2,
+        < LTS1 : LTS | transitions : (T1) >,
+        < LTS2 : LTS | transitions : (T2) >,
+        VIS1
+        )
+        and
+        simRec(S11, S22,
+        < LTS1 : LTS | transitions : (transition(S1, L, S11), T1) >,
+        < LTS2 : LTS | transitions : (transition(S2, L, S22), T2) >,
+        (S1, VIS1)
+        )
+    if not (S1 in VIS1) .
+
+  --- rule with matching transitions, but already visited state
+  ceq simRec(
+      S1,
+      S2,
+      < LTS1 : LTS | transitions : (transition(S1, L, S11), T1) >,
+      < LTS2 : LTS | transitions : (transition(S2, L, S22), T2) >,
+      VIS1
+      )
+    = true
+    if (S1 in VIS1) .
+
+  --- states without outgoing transitions
+  ceq simRec(
+      S1,
+      S2,
+      < LTS1 : LTS | transitions : T1 >,
+      < LTS2 : LTS | transitions : T2 >,
+      VIS1
+      )
+    = true
+    if noOutgoingTransitions(S1, T1) /\ noOutgoingTransitions(S2, T2) .
+
+  --- rule with additional transition in the second LTS
+  --- (without any matching in the first LTS)
+  ceq simRec(
+      S1,
+      S2,
+      < LTS1 : LTS | transitions : T1 >,
+      < LTS2 : LTS | transitions : (transition(S2, L, S22), T2) >,
+      VIS1
+      )
+    = true
+    if not (S1 in VIS1) /\ noMatchingTransition(S1, T1, transition(S2, L, S22)) .
+
+  eq simRec(S1, S2, O1, O2, VIS1)
+    = false [owise] .
+
+  --- this operation checks whether a transition does not have any matching
+  --- in a set of transitions
+
+  eq noMatchingTransition(S1, (transition(S1, L, S11), T1), transition(S2, L, S22))
+    = false .
+  eq noMatchingTransition(S1, T1, Trans)
+    = true [owise] .
+
+
+----------------------------- strong bisimulation with non-determinism
+  op ndbisim : Object Object -> Bool .
+  op ndbisimRec : State State Object Object Set{State} Set{State} -> Bool . ----[memo] .
+
+  eq ndbisim(
+       < LTS1 : LTS | initial : S1 >,
+       < LTS2 : LTS | initial : S2 >
+       )
+     = ndbisimRec(S1, S2, < LTS1 : LTS | >, < LTS2 : LTS | >, empty, empty) .
+
+  --- rule with matching transitions, recursive calls and one unvisited state
+  ceq ndbisimRec(
+      S1,
+      S2,
+      < LTS1 : LTS | transitions : T1' >,
+      < LTS2 : LTS | transitions : T2' >,
+      VIS1,
+      VIS2
+      )
+    = true
+    if not (S1 in VIS1 and S2 in VIS2)  --- at least one state has not been visited
+    /\ (transition(S1, L, S11), T1) := T1'
+    /\ (transition(S2, L, S22), T2) := T2'
+    /\ ndbisimRec(
+        S1,
+        S2,
+        < LTS1 : LTS | transitions : (T1) >,
+        < LTS2 : LTS | transitions : (T2) >,
+        VIS1,
+        VIS2
+        )
+    /\ ndbisimRec(S11, S22,
+        < LTS1 : LTS | >,
+        < LTS2 : LTS | >,
+        (S1, VIS1),
+        (S2, VIS2)
+        ) .
+
+  --- rule with matching transitions, but visited states
+  ceq ndbisimRec(
+      S1,
+      S2,
+      < LTS1 : LTS | >,
+      < LTS2 : LTS | >,
+      VIS1,
+      VIS2
+      )
+    = true
+    if (S1 in VIS1 and S2 in VIS2) . --- both target states already visited
+
+  --- two states without outgoing transitions are bisimilar
+  ceq ndbisimRec(
+      S1,
+      S2,
+      < LTS1 : LTS | transitions : T1 >,
+      < LTS2 : LTS | transitions : T2 >,
+      VIS1,
+      VIS2
+      )
+    = true
+    if noOutgoingTransitions(S1, T1) /\ noOutgoingTransitions(S2, T2) .
+
+  eq ndbisimRec(S1, S2, O1, O2, VIS1, VIS2)
+    = false [owise] .
+-----------------------------
+----------------------------- strong bisimulation with non-determinism (trying to accelerate the computation)
+  op ndbisim1 : Object Object -> Bool .
+  op ndbisimRec1 : State State Object Object Set{State} Set{State} -> Bool .
+
+  eq ndbisim1(
+       < LTS1 : LTS | initial : S1 >,
+       < LTS2 : LTS | initial : S2 >
+       )
+     = ndbisimRec1(S1, S2, < LTS1 : LTS | >, < LTS2 : LTS | >, empty, empty) .
+
+  --- rule with matching transitions, but visited states
+  ceq ndbisimRec1(
+      S1,
+      S2,
+      < LTS1 : LTS | >,
+      < LTS2 : LTS | >,
+      VIS1,
+      VIS2
+      )
+    = true
+    if S1 in VIS1 /\ S2 in VIS2 . --- both target states already visited
+
+  --- two states without outgoing transitions are bisimilar
+  ceq ndbisimRec1(
+      S1,
+      S2,
+      < LTS1 : LTS | transitions : T1 >,
+      < LTS2 : LTS | transitions : T2 >,
+      VIS1,
+      VIS2
+      )
+    = true
+    if noOutgoingTransitions(S1, T1) /\ noOutgoingTransitions(S2, T2) .
+
+  --- rule with matching transitions, recursive calls and one unvisited state
+  ceq ndbisimRec1(
+      S1,
+      S2,
+      < LTS1 : LTS | transitions : T1' >,
+      < LTS2 : LTS | transitions : T2' >,
+      VIS1,
+      VIS2
+      )
+    = true
+    if not (S1 in VIS1 and S2 in VIS2)  --- at least one state has not been visited
+    /\ (transition(S1, L, S11), T1) := T1'
+    /\ (transition(S2, L, S22), T2) := T2'
+    /\ ndbisimRec1(S11, S22,
+        < LTS1 : LTS | >,
+        < LTS2 : LTS | >,
+        (S1, VIS1),
+        (S2, VIS2)
+        ) 
+    /\ ndbisimRec1(
+        S1,
+        S2,
+        < LTS1 : LTS | transitions : (T1) >,
+        < LTS2 : LTS | transitions : (T2) >,
+        VIS1,
+        VIS2
+        )
+    .
+
+  eq ndbisimRec1(S1, S2, O1, O2, VIS1, VIS2)
+    = false [owise] .
+----------------------------- strong bisimulation with non-determinism
+  op ndbisim2 : Object Object -> Bool .
+  op ndbisimRec2 : State State Object Object Set{State} Set{State} -> Bool .
+
+  eq ndbisim2(
+       < LTS1 : LTS | initial : S1 >,
+       < LTS2 : LTS | initial : S2 >
+       )
+     = ndbisimRec2(S1, S2, < LTS1 : LTS | >, < LTS2 : LTS | >, empty, empty) .
+
+  --- rule with matching transitions, recursive calls and one unvisited state
+  crl ndbisimRec2(
+      S1,
+      S2,
+      < LTS1 : LTS | transitions : (transition(S1, L, S11), T1)  >,
+      < LTS2 : LTS | transitions : (transition(S2, L, S22), T2) >,
+      VIS1,
+      VIS2
+      )
+   => ndbisimRec2(
+        S1,
+        S2,
+        < LTS1 : LTS | transitions : (T1) >,
+        < LTS2 : LTS | transitions : (T2) >,
+        VIS1,
+        VIS2
+        )
+      and-then 
+      ndbisimRec2(S11, S22,
+        < LTS1 : LTS | transitions : (transition(S1, L, S11), T1) >,
+        < LTS2 : LTS | transitions : (transition(S2, L, S22), T2) >,
+        (S1, VIS1),
+        (S2, VIS2)
+        )
+    if not (S1 in VIS1 and S2 in VIS2)  --- at least one state has not been visited
+    .
+
+  --- rule with matching transitions, but visited states
+  crl ndbisimRec2(
+      S1,
+      S2,
+      < LTS1 : LTS | transitions : T1 >,
+      < LTS2 : LTS | transitions : T2 >,
+      VIS1,
+      VIS2
+      )
+    => true
+    if (S1 in VIS1 and S2 in VIS2) . --- both target states already visited
+
+  --- two states without outgoing transitions are bisimilar
+  crl ndbisimRec2(
+      S1,
+      S2,
+      < LTS1 : LTS | transitions : T1 >,
+      < LTS2 : LTS | transitions : T2 >,
+      VIS1,
+      VIS2
+      )
+    => true
+    if noOutgoingTransitions(S1, T1) /\ noOutgoingTransitions(S2, T2) .
+
+----  eq ndbisimRec2(S1, S2, O1, O2, VIS1, VIS2)
+----    = false [owise] .
+-----------------------------
+
+----------------------------- strong bisimulation with non-determinism and taus
+  op ndtbisim(_,_) : Object Object -> Bool 
+       [format(r o n++i o ni o o--)] .
+  op ndtbisimRec(_,_,_,_,_,_) : State State Object Object Set{State} Set{State} -> Bool 
+       [format(r o n++i o ni o ni o ni o ni o ni o o--)] .
+
+  eq ndtbisim(
+       < LTS1 : LTS | initial : S1 >,
+       < LTS2 : LTS | initial : S2 >
+       )
+     = ndtbisimRec(S1, S2, < LTS1 : LTS | >, < LTS2 : LTS | >, empty, empty) .
+
+  --- rule with matching transitions, recursive calls and one unvisited state
+  ceq ndtbisimRec(
+      S1,
+      S2,
+      < LTS1 : LTS | transitions : T1 >,
+      < LTS2 : LTS | transitions : T2 >,
+      VIS1,
+      VIS2
+      )
+    = true
+    if not (S1 in VIS1 and S2 in VIS2)  --- at least one state has not been visited
+    /\ (transition(S1, L, S11), T1') := T1
+    /\ (transition(S2, L, S22), T2') := T2 
+    /\ ndtbisimRec(
+        S1,
+        S2,
+        < LTS1 : LTS | transitions : T1' >,
+        < LTS2 : LTS | transitions : T2' >,
+        VIS1,
+        VIS2
+        )
+    /\ ndtbisimRec(S11, S22,
+        < LTS1 : LTS | >,
+        < LTS2 : LTS | >,
+        (S1, VIS1),
+        (S2, VIS2)
+        ).
+
+  --- rules with tau action (skip) + rec. call -> for first LTS
+  ceq [tbisimRec-tau1]: 
+      ndtbisimRec(
+        S1,
+        S2,
+        < LTS1 : LTS | transitions : (transition(S1, "tau", S11), T1) >,
+        < LTS2 : LTS | >,
+        VIS1,
+        VIS2
+        )
+    = true
+    if not (S1 in VIS1) 
+    /\ ndtbisimRec(
+        S1,
+        S2,
+        < LTS1 : LTS | transitions : T1 >,
+        < LTS2 : LTS | >,
+        VIS1,
+        VIS2
+        )
+    /\ ndtbisimRec(
+        S11, 
+        S2,
+        < LTS1 : LTS | >,
+        < LTS2 : LTS | >,
+        (S1, VIS1),
+        VIS2
+        ).
+
+  --- rules with tau action (skip) + rec. call -> for second LTS
+  ceq [tbisimRec-tau2]: 
+      ndtbisimRec(
+        S1,
+        S2,
+        < LTS1 : LTS | >,
+        < LTS2 : LTS | transitions : (transition(S2, "tau", S22), T2) >,
+        VIS1,
+        VIS2
+        )
+    = true
+    if not (S2 in VIS2) 
+    /\ ndtbisimRec(
+        S1,
+        S2,
+        < LTS1 : LTS | >,
+        < LTS2 : LTS | transitions : T2 >,
+        VIS1,
+        VIS2
+        )
+    /\ ndtbisimRec(
+        S1, 
+        S22,
+        < LTS1 : LTS | >,
+        < LTS2 : LTS | >,
+        VIS1,
+        (S2, VIS2)
+        ) .
+
+  --- rule with matching transitions, but visited states
+  ceq ndtbisimRec(
+        S1,
+        S2,
+        < LTS1 : LTS | >,
+        < LTS2 : LTS | >,
+        VIS1,
+        VIS2
+        )
+    = true
+    if (S1 in VIS1 and S2 in VIS2) . --- both target states already visited
+
+  --- two states without outgoing transitions are bisimilar
+  ceq ndtbisimRec(
+        S1,
+        S2,
+        < LTS1 : LTS | transitions : T1 >,
+        < LTS2 : LTS | transitions : T2 >,
+        VIS1,
+        VIS2
+        )
+    = true
+    if noOutgoingTransitions(S1, T1) /\ noOutgoingTransitions(S2, T2) .
+
+  eq ndtbisimRec(S1, S2, O1, O2, VIS1, VIS2)
+    = false [owise] .
+-----------------------------
+
+  --- examples
+
+  eq ex1 = < "lts1" : LTS
+           | initial : state("s1"),
+             states : (state("s1"), state("s2"), state("s3"), state("s4")),
+             transitions : (
+               transition(state("s1"), "a", state("s2")),
+               transition(state("s2"), "b", state("s3")),
+               transition(state("s3"), "a", state("s2")),
+               transition(state("s2"), "c", state("s4"))
+             ),
+             alphabet : ("a", "b", "c") > .
+
+  eq ex2 = < "lts2" : LTS
+           | initial : state("s1"),
+             states : (state("s1"), state("s2"), state("s3"), state("s4"), state("s5"), state("s6")),
+             transitions : (
+               transition(state("s1"), "a", state("s2")),
+               transition(state("s2"), "b", state("s3")),
+               transition(state("s3"), "a", state("s4")),
+               transition(state("s4"), "b", state("s3")),
+               transition(state("s2"), "c", state("s5")),
+               transition(state("s4"), "c", state("s6"))
+             ),
+             alphabet : ("a", "b", "c") > .
+
+  eq ex3 = < "lts3" : LTS
+           | initial : state("s1"),
+             states : (state("s1"), state("s2"), state("s3")),
+             transitions : (
+               transition(state("s1"), "a", state("s2")),
+               transition(state("s2"), "b", state("s3")),
+               transition(state("s3"), "a", state("s2"))
+             ),
+             alphabet : ("a", "b") > .
+
+  eq ex4 = < "lts4" : LTS
+           | initial : state("s1"),
+             states : (state("s1"), state("s2"), state("s3"), state("s4")),
+             transitions : (
+               transition(state("s1"), "a", state("s2")),
+               transition(state("s2"), "b", state("s3")),
+               transition(state("s3"), "tau", state("s4")),
+               transition(state("s4"), "a", state("s2"))
+             ),
+             alphabet : ("a", "b", "tau") > .
+
+  eq ex5 = < "lts5" : LTS
+           | initial : state("s1"),
+             states : (state("s1"), state("s2"), state("s3")),
+             transitions : (
+               transition(state("s1"), "a", state("s2")),
+               transition(state("s1"), "b", state("s3"))
+             ),
+             alphabet : ("a", "b") > .
+
+  eq ex6 = < "lts6" : LTS
+           | initial : state("s1"),
+             states : (state("s1"), state("s2"), state("s3"), state("s4")),
+             transitions : (
+               transition(state("s1"), "tau", state("s2")),
+               transition(state("s2"), "a", state("s3")),
+               transition(state("s1"), "b", state("s4"))
+             ),
+             alphabet : ("a", "b", "tau") > .
+
+  eq ex7 = < "lts7" : LTS
+           | initial : state("s0"),
+             states : (state("s0"), state("s1"), state("s2"), state("s3")),
+             transitions : (
+               transition(state("s0"), "a", state("s1")),
+               transition(state("s0"), "b", state("s1"))
+               ---transition(state("s0"), "a", state("s2")),
+               ---transition(state("s2"), "b", state("s1")),
+               ---transition(state("s0"), "b", state("s3")),
+               ---transition(state("s3"), "a", state("s1"))
+             ),
+             alphabet : ("a", "b") > .
+
+  eq ex8 = < "lts8" : LTS
+           | initial : state("s1"),
+             states : (state("s1"), state("s2"), state("s3"), state("s4"), state("s5"), state("s6"), state("s7"), state("s8"), state("s9"), state("s10"), state("s11")),
+             transitions : (
+               transition(state("s1"), "tau", state("s2")),
+               ---transition(state("s1"), "tau", state("s3")),
+               transition(state("s1"), "tau", state("s4")),
+               transition(state("s2"), "a", state("s5")),
+               transition(state("s5"), "tau", state("s6")),
+               ---transition(state("s3"), "tau", state("s7")),
+               ---transition(state("s7"), "a", state("s10")),
+               ---transition(state("s10"), "b", state("s11")),
+               ---transition(state("s7"), "b", state("s9")),
+               ---transition(state("s9"), "a", state("s11")),
+               ---transition(state("s11"), "tau", state("s6")),
+               transition(state("s4"), "b", state("s8")),
+               transition(state("s8"), "tau", state("s6"))
+             ),
+             alphabet : ("a", "b", "tau") > .
+
+  eq ex9 = < "lts9" : LTS
+           | initial : state("s0"),
+             states : (state("s0"), state("s1"), state("s2"), state("s3"), state("s4"), state("s5"), state("s6"), state("s7")),
+             transitions : (
+               transition(state("s0"), "tau", state("s1")),
+               transition(state("s1"), "a", state("s2")),
+               transition(state("s2"), "b", state("s7")),
+               transition(state("s7"), "tau", state("s3")),
+               transition(state("s1"), "tau", state("s4")),
+               transition(state("s4"), "a", state("s5")),
+               transition(state("s5"), "c", state("s6")),
+               transition(state("s6"), "tau", state("s3"))
+             ),
+             alphabet : ("a", "b", "c", "tau") > .
+
+  eq ex10 = < "lts10" : LTS
+           | initial : state("s1"),
+             states : (state("s1"), state("s2"), state("s3"), state("s4"), state("s5")),
+             transitions : (
+               transition(state("s1"), "a", state("s2")),
+               transition(state("s2"), "c", state("s3")),
+               transition(state("s1"), "a", state("s4")),
+               transition(state("s4"), "b", state("s3"))
+             ),
+             alphabet : ("a", "b", "c") > .
+
+  eq ex11 = < "lts11" : LTS
+           | initial : state("s1"),
+             states : (state("s1"), state("s2"), state("s3"), state("s4"), state("s5")),
+             transitions : (
+               transition(state("s1"), "a", state("s2")),
+               transition(state("s2"), "b", state("s3")),
+               transition(state("s1"), "a", state("s4")),
+               transition(state("s4"), "c", state("s3"))
+             ),
+             alphabet : ("a", "b", "c") > .
+endom
+
+eof
+set trace on .
+set trace select on .
+trace select ---- tbisim 
+             ---- tbisimRec 
+             ndtbisim`(_`,_`)
+             ndtbisimRec`(_`,_`,_`,_`,_`,_`)
+             .
+
+---(
+eof
+rew bisim(ex1, ex2) . --- expected true
+rew bisim(ex1, ex3) . --- expected false
+rew bisim(ex3, ex4) . --- expected false
+
+rew sim(ex1, ex3) .   --- expected false
+rew sim(ex3, ex1) .   --- expected true
+rew sim(ex1, ex1) .   --- expected true
+
+rew tbisim(ex3, ex4) . --- expected true
+rew tbisim(ex5, ex6) . --- expected true
+
+rew tbisim(ex9, ex10) . --- expected true
+
+rew tbisim(ex7, ex8) . --- expected true
+
+rew bisim(ex10,ex10) . --- expected true
+rew bisim(ex10,ex11) . --- expected false
+
+rew ndbisim(ex10,ex10) . --- expected true
+rew ndbisim(ex10,ex11) . --- expected false
+) 
+
+red ndtbisim(ex7, ex8) .  --- expected true
+
+eof
+rew ndtbisim(ex9, ex10) . --- expected true
+rew ndtbisim(ex10,ex10) . --- expected true
+rew ndtbisim(ex10,ex11) . --- expected false

@@ -1,0 +1,57 @@
+---- authors: Francisco Duran and Gwen Salaun
+---- file: bpmn.maude
+----
+---- This file contains the definitions for the representation of the BPMN process
+
+sload identifier.maude
+sload tuple2.maude
+sload tuple3.maude
+sload tuple4.maude
+----sload configuration.maude
+
+view Object from TRIV to CONFIGURATION is 
+  sort Elt to Object .
+endv
+
+---- Nodes ----------------------------------------------------------------
+fmod NODE is
+  pr SET{Id} .
+
+  ---- Gateways -----------------------------------------------------------
+  sort Gateway .
+  ops exclusive parallel inclusive : -> Gateway [ctor] .
+
+  sort Node .
+  op start : Id Id -> Node [ctor format (ni d)] .
+  op end : Id Id -> Node [ctor format (ni d)] . ---- TODO: just one input flow??
+  op task : Id String Id Id -> Node [ctor format (ni d)] . ---- description of the task
+  op split : Id Gateway Id Set{Id} -> Node [ctor format (ni d)] . ---- an input flow, a set of output flows
+  op merge : Id Gateway Set{Id} Id -> Node [ctor format (ni d)] . ---- a set of input flows, an output flow
+endfm
+
+view Node from TRIV to NODE is
+  sort Elt to Node .
+endv
+
+---- Flows ----------------------------------------------------------------
+fmod FLOW is
+  pr IDENTIFIER .
+
+  sort Flow .
+  op flow : Id -> Flow [ctor] .
+endfm
+
+view Flow from TRIV to FLOW is
+  sort Elt to Flow .
+endv
+
+---- Processes ------------------------------------------------------------
+omod BPMN-PROCESS is
+  pr SET{Node} .
+  pr SET{Flow} .
+
+  subsort Id < Oid . ---- PIds are valid object ids
+
+  class Process | nodes : Set{Node}, flows : Set{Flow} .
+endom
+

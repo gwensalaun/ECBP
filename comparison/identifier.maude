@@ -1,0 +1,9 @@
+fmod IDENTIFIER is
+  pr STRING .
+  sort Id .
+  subsort String < Id .
+endfm
+
+view Id from TRIV to IDENTIFIER is
+  sort Elt to Id .
+endv

@@ -1,0 +1,9 @@
+fmod MAYBE{X :: TRIV} is
+  sort Maybe{X} .
+  subsort X$Elt < Maybe{X} .
+  op maybe{X} : -> Maybe{X} [ctor] .
+endfm
+
+view Maybe{X :: TRIV} from TRIV to MAYBE{X} is
+  sort Elt to Maybe{X} .
+endv

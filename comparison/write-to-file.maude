@@ -1,0 +1,40 @@
+sload file.maude
+
+view Oid from TRIV to CONFIGURATION is
+  sort Elt to Oid .
+endv 
+
+omod WRITE-TO-FILE is 
+  inc FILE . 
+  pr MAYBE{String} * (op maybe{String} to null{String}) . 
+  pr MAYBE{Oid} * (op maybe{Oid} to null{Oid}) . 
+  
+  class FileWriter | file-name : Maybe{String}, text : Maybe{String}, file : Maybe{Oid} . 
+  
+  vars Text FileName : String . 
+  var  Ch : Char .
+  vars FW FH : Oid . 
+  
+  op to_: write(_,_) : Oid String String -> Msg .
+
+  rl [write] :
+     < FW : FileWriter | file-name : null{String} > 
+     to FW : write(FileName, Text) 
+  => < FW : FileWriter | file-name : FileName, text : Text > 
+     openFile(fileManager, FW, FileName, "w") . 
+  rl < FW : FileWriter | file : null{Oid}, text : Text > 
+     openedFile(FW, fileManager, FH) 
+  => < FW : FileWriter | file : FH, text : substr(Text, 20, sd(length(Text), 20)) > 
+     write(FH, FW, substr(Text, 0, 20)) .
+  rl < FW : FileWriter | text : Text > 
+     wrote(FW, FH) 
+  => if Text == ""
+     then < FW : FileWriter | file-name : null{String}, file : null{Oid}, text : null{String} > 
+          closeFile(FH, FW)
+     else < FW : FileWriter | text : substr(Text, 20, sd(length(Text), 20)) > 
+          write(FH, FW, substr(Text, 0, 20)) 
+     fi .
+  rl < FW : FileWriter | > 
+     closedFile(FW, FH) 
+  => < FW : FileWriter | > .
+endom

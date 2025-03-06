@@ -1,0 +1,21 @@
+---- from the book All About Maude
+---- from the Maude Manual
+---- by the Maude team
+
+fmod TUPLE3{X :: TRIV, Y :: TRIV, Z :: TRIV} is
+  sort Tuple{X, Y, Z} .
+  op ((_,_,_)) : X$Elt Y$Elt Z$Elt -> Tuple{X, Y, Z} [ctor] .
+  op p1_ : Tuple{X, Y, Z} -> X$Elt .
+  op p2_ : Tuple{X, Y, Z} -> Y$Elt .
+  op p3_ : Tuple{X, Y, Z} -> Z$Elt .
+  var A : X$Elt .
+  var B : Y$Elt .
+  var C : Z$Elt .
+  eq p1 (A, B, C) = A .
+  eq p2 (A, B, C) = B .
+  eq p3 (A, B, C) = C .
+endfm
+
+view Tuple3{X :: TRIV, Y :: TRIV, Z :: TRIV} from TRIV to TUPLE3{X, Y, Z} is 
+  sort Elt to Tuple{X, Y, Z} .
+endv

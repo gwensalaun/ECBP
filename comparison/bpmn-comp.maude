@@ -1,0 +1,403 @@
+---- authors: Francisco Duran and Gwen Salaun
+---- file: bpmn-comp.maude
+----
+---- This file contains the definitions for the representation of the BPMN process
+---- Main operation provided:
+----  compare(P1, P2, St, B) : compares two BPMN processes P1 and P2. If B is true, it generates files with the LTSs of 
+----                           the remaining boxes in the comparison, with names output_St_0.aut, output_St_1.aut, etc.
+----  writeAutFile(P, St) : generates a file with the LTS of the BPMN process P in aut format with name output_St.aut
+
+---(
+mod FOO is inc ShopOnline + ShopOnlineV2 + BPMN-COMPARISON . endm
+erew compare(ShopOnline, ShopOnline, "output", true) .
+)
+sload bpmn-process.maude
+sload default.maude 
+sload lts.maude
+sload bpmn-lts.maude 
+sload write-to-file
+
+omod BPMN-COMPARISON is
+  inc BPMN-PROCESS .
+  pr TUPLE3{Set{Node},Node,Set{Node}} * (op ((_,_,_)) to _++_++_) .
+  pr TUPLE4{Set{Node},Node,Set{Node},Set{Id}} * (op ((_,_,_,_)) to _++_++_++_) .
+  pr TUPLE3{Object, Object, Set{Tuple2{Id, Id}}} .
+  pr MAYBE{Id} .
+  pr LTS .
+  pr BPMN-LTS .
+  inc WRITE-TO-FILE .
+
+  op box(_,_,_) : Id Id Set{Node} -> Node [format (ni d d d d d ++ d --)] .
+  op box(_,_,_) : Id Maybe{Id} Set{Node} -> Node [format (ni d d d d d ++ d --)] .
+
+  vars P P1 P2 N N1 N2 N3 N4 N5 N6 F F' F1 F2 F3 F4 F5 F6 F11 F12 F21 F22 : Id .
+  vars FS FS' FS1 FS2 FS3 FS4 FS5 FS6 FS7 FS8 : Set{Id} .
+  vars Nodes Nodes1 Nodes2 Nodes3 Nodes4 Nodes5 Nodes6 Nodes7 Nodes8 Nodes9 Nodes10 Nodes11 Nodes12 : Set{Node} .
+  vars G G' : Gateway .
+  var  D Text FileName : String .
+  vars BS BS' BS'' : Set{Tuple2{Id, Id}} .
+  vars Atts1 Atts2 Atts3 Atts4 : AttributeSet .
+  vars Process Process1 Process2 : Object .
+  var  TO-FILE : Bool .
+  vars I J Index : Nat .
+
+  sort ComparisonResult .
+  subsort Configuration < ComparisonResult .
+  subsort Tuple{Object, Object, Set{Tuple2{Id, Id}}} < ComparisonResult .
+  op error : Tuple{Object, Object, Set{Tuple2{Id, Id}}} -> ComparisonResult .
+  op failure : Node Node String -> ComparisonResult .
+  ops failure success : -> Msg .
+
+  ---- compareB compares the process without using boxes. 
+  ---- It transforms the entire workflows into corresponding LTSs, then remove tau transitions, 
+  ---- and finally check their bisimilarity. 
+  op compareB : Object Object -> Bool .
+  eq compareB(Process1, Process2)
+    = ndbisim(eEliminate(bpmn2lts(Process1)), eEliminate(bpmn2lts(Process2))) .
+
+  op compareB1 : Object Object -> Bool .
+  eq compareB1(Process1, Process2)
+    = ndbisim1(eEliminate(bpmn2lts(Process1)), eEliminate(bpmn2lts(Process2))) .
+
+  ---- it generates corresponding files in aut format so that they can be compared using CADP
+  op writeAutFile : Object -> Configuration .
+  op writeAutFile : Object String -> Configuration .
+  eq writeAutFile(Process) 
+    = writeAutFile(Process, "output") .
+
+  eq writeAutFile(Process, FileName) 
+    = <>
+      < "fw" : FileWriter | file-name : null{String}, file : null{Oid}, text : null{String} > 
+      to "fw" : write(FileName + ".aut", toString(bpmn2lts(Process))) .
+
+  ---- compare compares the process by first reducing the problem to minimal structurally 
+  ---- different boxes, which are then checked for bisimilarity. If compare is invoked 
+  ---- with a 3rd argument, it indicates whether files with the LTSs are to be generated
+  ---- or the boxes are compared using ndbisim
+  op compare : Object Object -> ComparisonResult .
+  op compare : Object Object String -> ComparisonResult .
+  op compare : Object Object String Bool -> ComparisonResult .
+  op compareBoxes : ComparisonResult -> ComparisonResult .
+  op generateFiles : ComparisonResult String Nat -> ComparisonResult .
+  op generateFilesAux : ComparisonResult String Nat -> ComparisonResult .
+
+  eq compare(Process1, Process2) 
+   = compare(Process1, Process2, "") .
+
+  eq compare(Process1, Process2, Text) 
+   = compare(Process1, Process2, Text, true) .
+
+  eq compare(Process1, Process2, Text, TO-FILE) 
+    = if not TO-FILE
+      then compareBoxes(findBoxes(Process1, Process2)) 
+      else if generateFiles(findBoxes(Process1, Process2), Text, 0) == success
+           then success
+           else < "fw" : FileWriter | file-name : null{String}, file : null{Oid}, text : null{String} > 
+                <>
+                generateFiles(findBoxes(Process1, Process2), Text, 0)
+           fi
+      fi .
+  
+  eq generateFiles((Process1, Process2, empty), Text, Index) = success .
+  eq generateFiles((Process1, Process2, BS), Text, Index) 
+   = generateFilesAux((Process1, Process2, BS), Text, Index) .
+
+  eq generateFilesAux(
+      (< P1 : Process | nodes : (box(F11, F12, Nodes1), Nodes2) >, 
+       < P2 : Process | nodes : (box(F21, F22, Nodes3), Nodes4) >, 
+       ((F11, F21), BS)), Text, Index)
+    = to "fw" : write("output_" + Text + "_" + string(Index, 10) + "_0" + ".aut",
+                  toString(bpmn2lts(< P1 : Process | nodes : (start("start", F11), end("end", F12), Nodes1) >)))
+      to "fw" : write("output_" + Text + "_" + string(Index, 10) + "_1" + ".aut",
+                  toString(bpmn2lts(< P2 : Process | nodes : (start("start", F21), end("end", F22), Nodes3) >)))
+      generateFilesAux((< P1 : Process | nodes : Nodes2 >, < P2 : Process | nodes : Nodes4 >, BS), Text, s Index) .
+  eq generateFilesAux((Process1, Process2, empty), Text, Index) = none .
+  eq generateFilesAux((Process1, Process2, BS), Text, Index) = none [owise] .
+
+  eq compareBoxes(
+      (< P1 : Process | nodes : (box(F11, F12, Nodes1), Nodes2) >, 
+       < P2 : Process | nodes : (box(F21, F22, Nodes3), Nodes4) >, 
+       ((F11, F21), BS)))
+    = if compareB(< P1 : Process | nodes : (start("start", F11), end("end", F12), Nodes1) >, 
+                  < P2 : Process | nodes : (start("start", F21), end("end", F22), Nodes3) >)
+      then compareBoxes(
+            (< P1 : Process | nodes : Nodes2 >, 
+             < P2 : Process | nodes : Nodes4 >, 
+             BS)) 
+      else failure(box(F11, F12, Nodes1), box(F21, F22, Nodes3), "not bisimilar")
+      fi .
+  eq compareBoxes((Process1, Process2, empty)) = success .
+  eq compareBoxes((Process1, Process2, BS)) = failure [owise] .
+
+  ---- findBoxes proceeds recursively comparing the structure of two processes. 
+  ---- It reduces the problem to a number of boxes that identify the syntactic
+  ---- difference between them. These boxes will be compared using bisimulation.
+  op findBoxes : Object Object -> ComparisonResult .
+  op findBoxes1 : Object Object Set{Tuple2{Id, Id}} -> ComparisonResult .
+  op findBoxes2 : Object Object Set{Id} Set{Id} Set{Tuple2{Id, Id}} -> ComparisonResult .
+
+  ---- brings out the start-end nodes
+  ---- first the start nodes are taken and the boxes are created and paired up with the rest of the nodes inside
+  eq findBoxes(< P1 : Process | nodes : (start(N1, F1), Nodes1) >,
+               < P2 : Process | nodes : (start(N3, F3), Nodes2) >)
+   = findBoxes1(< P1 : Process | nodes : (start(N1, F1), box(F1, empty, Nodes1)) >,
+                < P2 : Process | nodes : (start(N3, F3), box(F3, empty, Nodes2)) >,
+                (F1, F3)) .     ---- paired boxes
+  ---- then the end nodes are taken out of the boxes
+  eq findBoxes1(< P1 : Process | nodes : (box(F1, FS1, (end(N1, F2), Nodes1)), Nodes2) >,
+                < P2 : Process | nodes : (box(F3, FS2, (end(N2, F4), Nodes3)), Nodes4) >,
+                (F1, F3))
+   = findBoxes1(< P1 : Process | nodes : (box(F1, (FS1, F2), Nodes1), (Nodes2, end(N1, F2))) >,
+                < P2 : Process | nodes : (box(F3, (FS2, F4), Nodes3), (Nodes4, end(N2, F4))) >,
+                (F1, F3)) .
+  ---- when there are no end events left the matching process begins
+  eq findBoxes1(< P1 : Process | >, < P2 : Process | >, (F1, F3))
+   = findBoxes2(< P1 : Process | >, < P2 : Process | >, 
+                empty, empty, ---- backward pending flows
+                (F1, F3))     ---- paired boxes
+   [owise] . 
+
+  eq [removal-of-empty-boxes] :
+     findBoxes2(< P1 : Process | nodes : (box(F1, F1, empty), Nodes1) >, 
+                < P2 : Process | nodes : (box(F2, F2, empty), Nodes2) >, 
+                FS1, FS2, ((F1, F2), BS))
+   = findBoxes2(< P1 : Process | nodes : Nodes1 >, 
+                < P2 : Process | nodes : Nodes2 >, 
+                FS1, FS2, BS) .
+  ---- brings out the task on the left (same task descriptions)
+  eq [task-on-the-left] :
+     findBoxes2(< P1 : Process | nodes : (box(F1, FS1, (task(N1, D, F1, F3), Nodes1)), Nodes2) >, 
+                < P2 : Process | nodes : (box(F4, FS2, (task(N2, D, F4, F6), Nodes3)), Nodes4) >, 
+                FS3, FS4, ((F1, F4), BS))
+   = findBoxes2(< P1 : Process | nodes : (box(F3, FS1, Nodes1), (task(N1, D, F1, F3), Nodes2)) >, 
+                < P2 : Process | nodes : (box(F6, FS2, Nodes3), (task(N2, D, F4, F6), Nodes4)) >, 
+                FS3, FS4, ((F3, F6), BS)) .
+ ---- brings out the task on the right (same task descriptions)
+  eq [task-on-the-right] :
+     findBoxes2(< P1 : Process | nodes : (box(F1, F2, (task(N1, D, F3, F2), Nodes1)), Nodes2) >, 
+                < P2 : Process | nodes : (box(F4, F5, (task(N2, D, F6, F5), Nodes3)), Nodes4) >, 
+                FS1, FS2, ((F1, F4), BS))
+   = findBoxes2(< P1 : Process | nodes : (box(F1, F3, Nodes1), task(N1, D, F3, F2), Nodes2) >, 
+                < P2 : Process | nodes : (box(F4, F6, Nodes3), task(N2, D, F6, F5), Nodes4) >, 
+                FS1, FS2, ((F1, F4), BS)) .
+  ---- If a split is at the left front, it may correspond to a fresh split starting a new split-merge pair 
+  ---- or it may correspond to a loop, i.e., there is a previous merge.
+  ---- This equation handles the first alternative, in this case the matching merge must be searched for.
+  ---- Each box [split-...] is broken into two parts, the split-...-merge and the rest. 
+  ---- The rest is put in a box. A new box is generated for each branch between the split and the merge. 
+  ---- These boxes (branches and rest) are found with the matchingMerge auxiliary operation.
+  ---- The branch boxes are paired up using the pairUpBoxes auxiliary operation.
+ ceq [split-on-the-left-fresh] :
+     findBoxes2(< P1 : Process | nodes : (box(F1, FS5, (split(N1, G, F1, FS1), Nodes1)), Nodes2) >, 
+                < P2 : Process | nodes : (box(F4, FS6, (split(N3, G, F4, FS3), Nodes3)), Nodes4) >, 
+                FS5, FS6, ((F1, F4), BS))
+   = findBoxes2(< P1 : Process | nodes : (Nodes7,                                             ---- nested boxes in the split-merge box
+                                          box(F3, FS5, Nodes8),                                ---- box with the rest after the merge
+                                          split(N1, G, F1, FS1), merge(N2, G, FS2, F3), Nodes2) >, ---- pulled out of the box
+                < P2 : Process | nodes : (Nodes9,                                             ---- nested boxes in the split-merge box 
+                                          box(F6, FS6, Nodes10),                               ---- box with the rest after the merge
+                                          split(N3, G, F4, FS3), merge(N4, G, FS4, F6), Nodes4) >, ---- pulled out of the box
+                FS5, FS6, ((F3, F6), BS, BS')) 
+   if _++_++_++_(Nodes7, merge(N2, G, FS2, F3), Nodes8, FS7) := matchingMerge(G, FS1, Nodes1, FS5) 
+   /\ Nodes9 ++ merge(N4, G, FS4, F6) ++ Nodes10 ++ FS8 := matchingMerge(G, FS3, Nodes3, FS6) 
+   /\ BS' := pairUpBoxes(Nodes7, Nodes9)                                   ---- pair up branch boxes
+   /\ BS'' := pairUpBoxes(box(F3, FS7, Nodes8), box(F6, FS8, Nodes10)) .   ---- check that the remaining boxes also match
+  ---- If a split is at the left front, it may correspond to a fresh split starting a new split-merge pair 
+  ---- or it may correspond to a loop, i.e., there is a previous merge that matches this split.
+  ---- This equation handles the second alternative. In this case there are a set of incoming flows of the merge, 
+  ---- and the closing flow of the box, that need to be matched. 
+  ---- The auxiliary operation matchingLoop takes the set of outgoing flows of the split and the pending incoming
+  ---- flows of the looping merge plus the flow closing the box. It returns a set of boxes, that are then paired 
+  ---- up by the pairUpBoxes auxiliary operation.
+ ceq [split-on-the-left-loop] :
+     findBoxes2(< P1 : Process | nodes : (box(F1, F2, (split(N1, G, F1, FS1), Nodes1)), Nodes2) >, 
+                < P2 : Process | nodes : (box(F4, F5, (split(N3, G, F4, FS3), Nodes3)), Nodes4) >, 
+                FS5, FS6, ((F1, F4), BS))
+   = findBoxes2(< P1 : Process | nodes : (Nodes7,      ---- nested boxes in the split-merge box + box with the rest after the merge
+                                          split(N1, G, F1, FS1), Nodes2) >, ---- split pulled out of the box
+                < P2 : Process | nodes : (Nodes9,      ---- nested boxes in the split-merge box + box with the rest after the merge
+                                          split(N3, G, F4, FS3), Nodes4) >, ---- split pulled out of the box
+                empty, empty, (BS, BS')) 
+   if Nodes7 := matchingLoop(FS1, (FS5, F2), Nodes1) ---- (FS5,F2) can be reached from FS1
+   /\ Nodes9 := matchingLoop(FS3, (FS6, F5), Nodes3) 
+   /\ BS' := pairUpBoxes(Nodes7, Nodes9) .
+  ---- merge on the right, matching split must be searched backwards
+  ---- each box [...-merge] is broken into two: [...] [split-...-merge]
+ ceq [merge-on-the-right] :
+     findBoxes2(< P1 : Process | nodes : (box(F1, F2, (merge(N2, G, FS2, F2), Nodes1)), Nodes2) >, 
+                < P2 : Process | nodes : (box(F4, F5, (merge(N4, G, FS4, F5), Nodes3)), Nodes4) >, 
+                FS5, FS6, ((F1, F4), BS))
+   = findBoxes2(< P1 : Process | nodes : (Nodes7, 
+                                          box(F1, F3, Nodes8),
+                                          split(N1, G, F3, FS1), merge(N2, G, FS2, F2), Nodes2) >, 
+                < P2 : Process | nodes : (Nodes9, 
+                                          box(F4, F6, Nodes10),
+                                          split(N3, G, F6, FS3), merge(N4, G, FS4, F5), Nodes4) >, 
+                FS5, FS6, ((F1, F4), BS, BS')) 
+   if Nodes7 ++ split(N1, G, F3, FS1) ++ Nodes8 := matchingSplit(G, FS2, Nodes1)
+   /\ Nodes9 ++ split(N3, G, F6, FS3) ++ Nodes10 := matchingSplit(G, FS4, Nodes3) 
+   /\ BS' := pairUpBoxes(Nodes7, Nodes9) .                         ---- pairing for the boxes
+
+  ---- if a merge is at the left front, it is for a loop, and the matching split must be searched for
+  ---- each box [merge-...] is broken into two: [merge-...-split] [...]
+  ---- with the nested boxes between the merge and the split paired up
+ ceq [merge-on-the-left] :
+     findBoxes2(< P1 : V1:Process | nodes : (box(F1, F2, (merge(N1, G, (F1, FS1), F3), Nodes1)), Nodes2), Atts1 >, 
+                < P2 : V2:Process | nodes : (box(F4, F5, (merge(N3, G, (F4, FS2), F6), Nodes3)), Nodes4), Atts2 >, 
+                FS5, FS6, ((F1, F4), BS))
+   = findBoxes2(< P1 : V1:Process | 
+                  nodes : (Nodes5,                                            ---- nested boxes, closing split and box F3-F2
+                           merge(N1, G, (F1, FS1), F3), Nodes2), Atts1 >,     ---- pulled out of the box
+                < P2 : V2:Process | 
+                  nodes : (Nodes6,
+                           merge(N3, G, (F4, FS2), F6), Nodes4), Atts2 >,
+                FS5, FS6, (BS, BS')) 
+   if (< P1 : V1:Process | nodes : Nodes5, Atts3 >, < P2 : V2:Process | nodes : Nodes6, Atts4 >, BS') 
+         ---- the closing split is supposed to be in the resulting set of nodes
+      := findBoxes2(< P1 : V1:Process | nodes : box(F3, F2, Nodes1), Atts1 >, ---- focuses on the box to identify the loop
+                    < P2 : V2:Process | nodes : box(F6, F5, Nodes3), Atts2 >, 
+                    FS1, FS2,     ---- looping flows 
+                    (F3, F6))     ---- binding of the only current boxes
+   [dnt] .
+
+  ---- nothing else to be done
+  eq [remaining-boxes] :
+     findBoxes2(< P1 : Process | nodes : Nodes1 >, < P2 : Process | nodes : Nodes2 >, empty, empty, BS)
+   = (< P1 : Process | nodes : Nodes1 >, < P2 : Process | nodes : Nodes2 >, BS) 
+   [owise] .
+
+  op matchingMerge : Gateway Set{Id} Set{Node} Set{Id} -> Tuple{Set{Node},Node,Set{Node},Set{Id}} .
+  op matchingMerge : Gateway Set{Node} Set{Id} Set{Node} Set{Id} -> Tuple{Set{Node},Node,Set{Node},Set{Id}} .
+  op matchingSplit : Gateway Set{Id} Set{Node} -> Tuple{Set{Node},Node,Set{Node}} .
+  op matchingSplit : Gateway Set{Node} Set{Id} Set{Node} -> Tuple{Set{Node},Node,Set{Node}} .
+  op matchingLoop : Set{Id} Set{Id} Set{Node} -> Set{Node} .
+  op matchingLoop : Set{Node} Set{Id} Set{Id} Set{Node} -> Set{Node} .
+  
+  op boxesl : Set{Id} -> Set{Node} .
+  eq boxesl((F, FS)) = (box(F, F, empty), boxesl(FS)) .
+  eq boxesl(empty) = empty .
+
+  eq matchingMerge(G, FS, Nodes, FS') = matchingMerge(G, boxesl(FS), FS, Nodes, FS') .
+
+  eq matchingMerge(G, (box(F1, (F2, FS1), Nodes1), Nodes2), (F2, FS2), (task(N, D, F2, F3), Nodes3), FS3) 
+   = matchingMerge(G, (box(F1, (F3, FS1), (Nodes1, task(N, D, F2, F3))), Nodes2), (F3, FS2), Nodes3, FS3) .
+  eq matchingMerge(G, (box(F1, (F2, FS1), Nodes1), Nodes2), (F2, FS2), (split(N, G', F2, FS3), Nodes3), FS4) 
+   = matchingMerge(G, (box(F1, (FS3, FS1), (Nodes1, split(N, G', F2, FS3))), Nodes2), (FS3, FS2), Nodes3, FS4) .
+  eq matchingMerge(G, (box(F1, (FS1, FS2), Nodes1), Nodes2), (FS1, FS3), (merge(N, G', FS1, F2), Nodes3), FS4) 
+   = matchingMerge(G, (box(F1, (F2, FS2), (Nodes1, merge(N, G', FS1, F2))), Nodes2), (F2, FS3), Nodes3, FS4) .
+  eq matchingMerge(G, (box(F1, (F2, FS1), Nodes1), Nodes2), FS2, Nodes3, (F2, FS3)) 
+   = matchingMerge(G, (box(F1, FS1, Nodes1), Nodes2), FS2, Nodes3, FS3) .
+  eq matchingMerge(G, Nodes1, FS, (merge(N, G, FS, F), Nodes2), FS1) 
+   = Nodes1 ++ merge(N, G, FS, F) ++ Nodes2 ++ FS1 .
+
+  ---- looks forward for a set of boxes that close a given set of flow ids 
+  ---- matchingLoop(FS1, FS2, Nodes) search for flows FS2 from a set FS1
+  ---- FS2 is initially a set of incoming flows to a looping merge (merge in the left) and a closing box
+  ---- from the set of flows outgoing such a merge,  
+  eq matchingLoop(FS1, FS2, Nodes) = matchingLoop(boxesl(FS1), FS1, FS2, Nodes) .
+
+  eq matchingLoop((box(F1, (F2, FS1), Nodes1), Nodes2), (F2, FS2), FS3, (task(N, D, F2, F3), Nodes3)) 
+   = matchingLoop((box(F1, (F3, FS1), (Nodes1, task(N, D, F2, F3))), Nodes2), (F3, FS2), FS3, Nodes3) .
+  eq matchingLoop((box(F1, (F2, FS1), Nodes1), Nodes2), (F2, FS2), FS3, (split(N, G', F2, FS4), Nodes3)) 
+   = matchingLoop((box(F1, (FS4, FS1), (Nodes1, split(N, G', F2, FS4))), Nodes2), FS3, (FS4, FS2), Nodes3) .
+
+  eq matchingLoop((box(F1, (FS1, FS2), Nodes1), Nodes2), (FS1, FS3), FS4, (merge(N, G', FS1, F2), Nodes3)) 
+   = matchingLoop((box(F1, (F2, FS2), (Nodes1, merge(N, G', FS1, F2))), Nodes2), (F2, FS3), FS4, Nodes3) 
+   [owise] .
+
+  eq matchingLoop(Nodes1, (F1, FS1), (F2, FS2), Nodes2)
+   = matchingLoop(Nodes1, FS1, FS2, Nodes2) .
+  eq matchingLoop(Nodes1, empty, empty, Nodes2)
+   = Nodes1 .
+
+  op boxesr : Set{Id} -> Set{Node} .
+  eq boxesr((F, FS)) = (box(F, F, empty), boxesr(FS)) .
+  eq boxesr(empty) = empty .
+
+  eq matchingSplit(G, FS, Nodes) = matchingSplit(G, boxesr(FS), FS, Nodes) .
+
+  eq matchingSplit(G, (box((F1, FS1), F2, Nodes1), Nodes2), (F1, FS2), (task(N, D, F3, F1), Nodes3)) 
+   = matchingSplit(G, (box((F3, FS1), F2, (Nodes1, task(N, D, F3, F1))), Nodes2), (F3, FS2), Nodes3) .
+  eq matchingSplit(G, (box((F1, FS1), F2, Nodes1), Nodes2), (F1, FS2), (merge(N, G, FS3, F1), Nodes3)) 
+   = matchingSplit(G, (box((FS3, FS1), F2, (Nodes1, merge(N, G, FS3, F1))), Nodes2), (FS3, FS2), Nodes3) .
+ ceq matchingSplit(G, (box((FS1, FS2), F1, Nodes1), Nodes2), (FS1, FS3), (split(N, G, F2, FS1), Nodes3)) 
+   = matchingSplit(G, (box((F2, FS2), F1, (Nodes1, split(N, G, F2, FS1))), Nodes2), (F2, FS3), Nodes3) 
+   if FS3 =/= empty . 
+
+  eq matchingSplit(G, Nodes1, FS, (split(N, G, F, FS), Nodes2)) 
+   = Nodes1 ++ split(N, G, F, FS) ++ Nodes2 .
+  
+---(
+  op match : Id Set{Id} Set{Node} Id Set{Id} Set{Node} -> Bool .
+  op match : Id Id Set{Set{Tuple2{Id}}} Set{Node} Set{Node} -> Bool .
+  
+  eq match(FId1, FIds1, Nodes1, FId2, FIds2, Nodes2) 
+    = match(FId1, FId2, bindings(FIds1, FIds2), Nodes1, Nodes2) .
+  
+  eq match(FId1, FId2, ((FId4, FId6), BS ; BSS), (task(Nid1, D, FId3, FId4), Nodes1), (task(Nid2, D, FId5, FId6), Nodes2))
+    = match(FId1, FId2, ((FId3, FId5), BS ; BSS), (task(Nid1, D, FId3, FId4), Nodes1), (task(Nid2, D, FId5, FId6), Nodes2)) .
+  eq match(FId1, FId2, 
+       ((FId4, null{Id}), (null{Id}, FId6), BS ; BSS), 
+       (task(Nid1, D, FId3, FId4), Nodes1), 
+       (task(Nid2, D, FId5, FId6), Nodes2))
+    = match(FId1, FId2, ((FId3, FId5), BS ; BSS), (task(Nid1, D, FId3, FId4), Nodes1), (task(Nid2, D, FId5, FId6), Nodes2)) .
+
+  eq match(FId1, FId2, ((FId3, FId4), BS ; BSS), (merge(Nid1, G, Fids1, FId3), Nodes1), (merge(Nid2, G, FIds2, FId4), Nodes2))
+    = match(FId1, FId2, ((FId4, FId6), BS ; BSS), (merge(Nid1, G, Fids1, FId3), Nodes1), (merge(Nid2, G, FIds2, FId4), Nodes2)) .
+)
+
+  ---- match takes two sets of flow ids and a set of nodes and returns the set of boxes matching them. 
+  ---- It is supposed to be used with the set of outgoing flows of a split, the set of incoming flows 
+  ---- of the corresponding merge, and the set of nodes joining them. 
+  ---- It uses an auxiliary operation match2 that recursively moves to the right of the workflow, 
+  ---- keeping an original input flow, the frontier of the left-side flows, the available target 
+  ---- flows, the used nodes, and the complete set of available nodes. 
+  ---- A call for each of the flows in the left is made, each of which will select the nodes needed 
+  ---- for it. 
+
+  sort PairingResult .
+  subsort Set{Tuple2{Id, Id}} < PairingResult .
+
+  op pairUpBoxes : Set{Node} Set{Node} -> PairingResult .
+  op pairUpBoxes : Set{Node} Set{Node} Set{Node} Set{Node} Set{Tuple2{Id, Id}} -> PairingResult .
+  op match : Set{Id} Set{Node} Set{Id} Set{Node} -> Bool .
+
+  eq pairUpBoxes(Nodes1, Nodes2) = pairUpBoxes(Nodes1, Nodes2, empty, empty, empty) .
+
+  ---- the last box can be directly paired up
+  eq pairUpBoxes(empty, empty, Nodes1, Nodes2, BS) = BS .
+  ---- empty boxes
+  eq pairUpBoxes((box(F1, F1, empty), Nodes1), 
+                 (box(F2, F2, empty), Nodes2), 
+                 Nodes3, Nodes4, BS)
+   = pairUpBoxes(Nodes1, Nodes2,  
+                 (box(F1, F1, empty), Nodes3), 
+                 (box(F2, F2, empty), Nodes4),
+                 ((F1, F2), BS)) .
+  ---- if there are only one-and-one boxes then they must be matched
+  eq pairUpBoxes(box(F1, F2, Nodes1), 
+                 box(F4, F5, Nodes3), 
+                 Nodes5, Nodes6, BS)
+   = ((F1, F4), BS) .
+  ---- boxes with matching tasks on the left front
+  eq pairUpBoxes((box(F1, F2, (task(N1, D, F1, F3), Nodes1)), Nodes2), 
+                 (box(F4, F5, (task(N2, D, F4, F6), Nodes3)), Nodes4), 
+                 Nodes5, Nodes6, BS)
+   = pairUpBoxes(Nodes2, Nodes4, 
+                 (box(F1, F2, (task(N1, D, F1, F3), Nodes1)), Nodes5), 
+                 (box(F4, F5, (task(N2, D, F4, F6), Nodes3)), Nodes6),
+                 ((F1, F4), BS)) .
+  ---- matching split with matching boxes
+ ceq pairUpBoxes((box(F1, F2, (split(N1, G, F1, FS1), Nodes1)), Nodes2), 
+                 (box(F3, F4, (split(N2, G, F3, FS2), Nodes3)), Nodes4), 
+                 Nodes5, Nodes6, BS)
+   = pairUpBoxes(Nodes2, Nodes4, 
+                 (box(F1, F2, (split(N1, G, F1, FS1), Nodes1)), Nodes5), 
+                 (box(F3, F4, (split(N2, G, F3, FS2), Nodes3)), Nodes6),
+                 ((F1, F4), BS)) 
+   if match(FS1, Nodes1, FS2, Nodes3) .
+
+  eq match((F1, FS1), (task(N1, D, F1, F2), Nodes1), (F3, FS2), (task(N2, D, F3, F4), Nodes2))
+   = match(FS1, Nodes1, FS2, Nodes2) .
+  eq match(FS1, Nodes1, FS2, Nodes2) = false [owise] . ---- TODO: other cases may be considered
+endom

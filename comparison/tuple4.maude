@@ -1,0 +1,24 @@
+---- from the book All About Maude
+---- from the Maude Manual
+---- by the Maude team
+
+fmod TUPLE4{X :: TRIV, Y :: TRIV, W :: TRIV, Z :: TRIV} is
+  sort Tuple{X, Y, W, Z} .
+  op ((_,_,_,_)) : X$Elt Y$Elt W$Elt Z$Elt -> Tuple{X, Y, W, Z} [ctor] .
+  op p1_ : Tuple{X, Y, W, Z} -> X$Elt .
+  op p2_ : Tuple{X, Y, W, Z} -> Y$Elt .
+  op p3_ : Tuple{X, Y, W, Z} -> W$Elt .
+  op p4_ : Tuple{X, Y, W, Z} -> Z$Elt .
+  var A : X$Elt .
+  var B : Y$Elt .
+  var C : W$Elt .
+  var D : Z$Elt .
+  eq p1 (A, B, C, D) = A .
+  eq p2 (A, B, C, D) = B .
+  eq p3 (A, B, C, D) = C .
+  eq p4 (A, B, C, D) = D .
+endfm
+
+view Tuple4{X :: TRIV, Y :: TRIV, W :: TRIV, Z :: TRIV} from TRIV to TUPLE4{X, Y, W, Z} is 
+  sort Elt to Tuple{X, Y, W, Z} .
+endv

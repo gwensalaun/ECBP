@@ -1,0 +1,345 @@
+---- authors: Francisco Duran and Gwen Salaun
+---- file: bpmn-lts.maude
+----
+---- This file contains basic operations to transform a BPMN process into an LTS.
+---- Main operation provided:
+----  bpmn2lts(P) generates an object representing the LTS of the BPMN process P.
+----  eEliminate(L) removes epsilon transitions from the LTS L.
+
+sload bpmn-sem.maude 
+sload lts.maude
+
+---- Idea for bpmn2lts.
+---- two required vars : a set of set of tokens (tobevisited), let's call this a configuration
+----                     a set of set of tokens (visited)
+----                     the set of transitions, which is going to be built during the process
+---- we can rely on the semantic rules. for each rule, we look if there is a configuration
+---- where a token is present and can thus trigger the rule. if this is the case, we
+---- remove the configuration from tobevisited and move it to visited. Moreover, we
+---- add to "tobevisited" the new configurations corresponding to the triggering of this rule
+---- every time we trigger a semantic rule, we add one or several transitions to the set of transitions
+---- (epsilon on the label if the bpmn construct is not a task and task name on the label otherwise)
+---- This exploration generates the entire LTS. In a final step, remove epsilon transitions
+---- as defined in Hopcroft's book (Intro. to Automata Theory, Languages and Automation).
+
+omod BPMN-LTS is
+  inc BPMN-SEM .
+  inc LTS .
+---- Since we use sets of sets, one of them needs to be renamed to avoid name clashes. 
+  pr (SET * (op empty to none, 
+             op _,_ to _;_,
+             op insert to minsert,
+             op delete to mdelete,
+             op _in_ to _min_,
+             op |_| to m|_|,
+             op $card to m$card,
+             op union to munion,
+             op intersection to mintersection,
+             op $intersect to m$intersection,
+             op _\_ to _m\_,
+             op $diff to m$diff,
+             op _subset_ to _msubset_,
+             op _psubset_ to _mpsubset_)){Set{Token}} .
+  ---- States are just sets of tokens, 
+  pr MAP{Set{Token}, State} .
+  pr SET{Id} .
+  pr META-LEVEL .
+  pr CONVERSION .
+
+  op lts : Oid -> Oid .
+  op state : Set{Id} -> State .
+
+  vars P L : Oid .
+  vars N1 N2 N3 F1 F2 F3 Id : Id .
+  var  Nodes : Set{Node} .
+  vars Process LTS : Object .
+  vars Tks Tks' : Set{Token} .
+  vars Visited TBVisited : Set{Set{Token}} .
+  var  Mapping : Map{Set{Token}, State} .
+  vars Index N : Nat .
+  vars T Label : String .
+  vars Sts Sts' : Set{State} .
+  vars Trs Trs' Trs'' Trs''' : Set{Transition} .
+  vars Alp Ids Ids' Ids'' : Set{Id} .
+  vars NeIds NeIds' NeIds'' : NeSet{Id} .
+  var  Conf : Configuration .
+  var  Atts : AttributeSet .
+  vars St0 St St' St'' St''' : State .
+
+  op bpmn2lts : Object -> [Object] .
+  op bpmn2lts2 : Object Set{Set{Token}} Set{Set{Token}} Map{Set{Token}, State} Nat Object -> Object .
+  op error`(_`,_`) : Object String -> [Object] [format (r o d d r o d)].
+  op bpmn2lts3 : Object Set{Token} Nat Set{Set{Token}} Set{Set{Token}} Map{Set{Token}, State} Nat Object -> Object .
+
+  ---- If there are two end nodes an error is given. 
+  ---- We should possibly check for other problems in the input workflow. 
+----  eq bpmn2lts(< P : Process | nodes : (start(N1, F1), end(N2, F2), end(N3, F3), Nodes) >)
+----   = error(< P : Process | nodes : (start(N1, F1), end(N2, F2), end(N3, F3), Nodes) >, "Two end events") .
+  eq bpmn2lts(< P : Process | nodes : (start(N1, F1), Nodes) >)
+   = bpmn2lts2(< P : Process | nodes : (start(N1, F1), Nodes) >, 
+                token(F1), 
+                none,
+                token(F1) |-> state("s0"),
+                1,
+                < lts(P) : LTS | initial : state("s0"), states : state("s0"), transitions : empty, alphabet : empty >) 
+   [owise] .
+
+  ---- bpmn2lts2 check each of the states in the TBVisited set of configurations. 
+  ---- It selects one of the configurations (Tks) and invokes bpmn2lts3. Once this state
+  ---- is expanded, it comes back to this operation, which finishes when there are no 
+  ---- more configurations to explore in the TBVisited set. 
+  eq bpmn2lts2(Process, (Tks ; TBVisited), Visited, Mapping, Index, LTS)
+    = bpmn2lts3(Process, Tks, 0, TBVisited, Visited, Mapping, Index, LTS) .
+  eq bpmn2lts2(Process, none, Visited, Mapping, Index, LTS) = LTS .
+
+  ---- label returns the label of the executed task, or "tau" if no task was executed.
+  ---- We assume that the process is using two types of tokens, of forms token(Id) and 
+  ---- token(Id, T). Those of form token(Id, T) are set when a task is executed, with T 
+  ---- being its label. Because of this, if there is a token of form token(Id, T), then 
+  ---- there must be only one, since it is the result of the application of a rule. 
+  ---- The semantics of BPMN has been changed to produce this behavior. Originally, 
+  ---- all tokens were of the form token(Id). However, since the rule is passing through
+  ---- the task without staying there, there is no way to differenciate them. 
+  op label : Set{Token} -> Id . 
+  eq label((token(Id, T), Tks)) = T .
+  eq label(Tks) = "tau" [owise] .
+
+  ---- normalizeTokens takes the only task token and turn it back into a regular token.
+  ---- If there is a task token it is the only one, it is the result of the application 
+  ---- of a rule. 
+  op normalizeTokens : Set{Token} -> Set{Token} . 
+  eq normalizeTokens((token(Id, T), Tks)) = token(Id), Tks .
+  eq normalizeTokens(Tks) = Tks [owise] .
+
+  ---- Given a set of tokens Tks, bpmn2lts3 tries to rewrite the process together 
+  ---- with a Simulation object < "s" : Simulation | tokens : Tks > using srewrite.
+  ---- We try one-step rewrites with any of the rules. bpmn2lts3 uses an index (N, 3rd arg)
+  ---- to go through all possible rewrites. Another index (Index, 7th arg) allows us 
+  ---- to generate fresh names of the form sN. If the state has not been seen before, 
+  ---- a new name is assigned to it. Otherwise the existing name is used. The Mapping
+  ---- map (6th arg) allows us to keep track of the naming of states. Note that 
+  ---- tokens are normalized (tokens of the form token(Id, T) are turned into token(Id))
+  ---- using the normalizeTokens operation. 
+ ceq bpmn2lts3(Process, Tks, N, TBVisited, Visited, Mapping, Index, 
+       < L : LTS | states : Sts, transitions : Trs, alphabet : Alp, Atts >)
+   = if Tks' == empty ---- the process has reached the end event
+     then bpmn2lts2(Process, TBVisited, (Tks ; Visited), Mapping, Index, 
+            < L : LTS | states : Sts, transitions : Trs, alphabet : Alp, Atts >) 
+     else bpmn2lts3(Process, Tks, s N, 
+            (if normalizeTokens(Tks') min Visited
+             then empty 
+             else normalizeTokens(Tks') 
+             fi ; TBVisited), 
+            Visited, 
+            (Mapping, 
+             ---- if seem before, either in the Visited or in the TBVisited sets, it's 
+             ---- in the keyset of the map
+             if Mapping[normalizeTokens(Tks')] =/= undefined 
+             then empty 
+             else normalizeTokens(Tks') |-> state("s" + string(Index, 10))
+             fi), 
+            if Mapping[normalizeTokens(Tks')] =/= undefined 
+            then Index
+            else s Index
+            fi, 
+            < L : LTS | 
+              states : 
+                (if Mapping[normalizeTokens(Tks')] =/= undefined 
+                 then empty
+                 else state("s" + string(Index, 10))
+                 fi, 
+                 Sts), 
+              transitions : 
+                (Trs, 
+                 transition(
+                   Mapping[Tks], 
+                   label(Tks'), 
+                   if Mapping[normalizeTokens(Tks')] =/= undefined 
+                   then Mapping[normalizeTokens(Tks')]
+                   else state("s" + string(Index, 10))
+                   fi)),
+              alphabet : 
+                (Alp, (if label(Tks') == "tau" then empty else label(Tks') fi)), Atts >)
+     fi
+   if Conf < "s" : Simulation | tokens : Tks' >
+        := downTerm(
+              getTerm(
+                metaSrewrite(
+                  upModule('BPMN-SEM, false), 
+                  upTerm(Process < "s" : Simulation | tokens : Tks >),
+                  all, 
+                  breadthFirst, 
+                  N)), 
+              none) 
+   [dnt] .
+  ---- When no further rules can be applied on a state, it is moved into the Visited 
+  ---- states set, so bpmn2lts2 will take the next one. 
+  eq bpmn2lts3(Process, Tks, N, TBVisited, Visited, Mapping, Index, LTS)
+   = bpmn2lts2(Process, TBVisited, (Tks ; Visited), Mapping, Index, LTS) 
+   [owise] .
+
+  ---- Once the LTS is generated using the above bpmn2lts operation, tau transitions
+  ---- must be removed. 
+
+  op eEliminate : Object -> Object .
+  op eEliminateAux : Object -> Object .
+  ceq eEliminate(
+       < L : LTS | transitions : (transition(St, "tau", St'), transition(St', Label, St''), Trs) >)
+    = eEliminate(
+       < L : LTS | 
+         transitions : 
+           (transition(St, "tau", St'), transition(St', Label, St''), transition(St, Label, St''), Trs) >) 
+    if not transition(St, Label, St'') in (transition(St, "tau", St'), transition(St', Label, St''), Trs) .
+  eq eEliminate(< L : LTS | >) = eEliminateAux(< L : LTS | >) [owise] .
+
+  eq eEliminateAux(< L : LTS | transitions : (transition(St, "tau", St'), Trs) >) 
+    = eEliminateAux(< L : LTS | transitions : Trs >) .
+  ceq eEliminateAux(< L : LTS | initial : St, transitions : (transition(St', Label, St''), Trs) >) 
+    = eEliminateAux(< L : LTS | transitions : Trs >) 
+    if St =/= St' /\ not reached(St', Trs) .
+  ceq eEliminateAux(< L : LTS | states : (St, Sts), transitions : Trs >)
+    = eEliminateAux(< L : LTS | states : Sts, transitions : Trs >)
+    if not visited(St, Trs) .
+  eq eEliminateAux(< L : LTS | >) = < L : LTS | > [owise] .
+
+  op visited : State Set{Transition} -> Bool .
+  eq visited(St, (transition(St, Label, St'), Trs)) = true .
+  eq visited(St, (transition(St', Label, St), Trs)) = true .
+  eq visited(St, Trs) = false [owise] .
+
+  op reached : State Set{Transition} -> Bool .
+  eq reached(St, (transition(St', Label, St), Trs)) = true .
+  eq reached(St, Trs) = false [owise] .
+
+---(
+  ---- This collapses too much. Basically s and s' are in the same state cluster if 
+  ---- s and s' are linked by a sequence of taus. 
+
+  op eEliminate : Object -> Object .
+  op replace : State State Object -> Object .
+
+  eq eEliminate(< L : LTS | transitions : (transition(state(Ids), "tau", state(Ids')), Trs) >)
+    = if Ids == Ids' 
+      then eEliminate(< L : LTS | transitions : Trs >)
+      else eEliminate(replace(state(Ids), state(Ids'), < L : LTS | transitions : Trs >)) 
+      fi .
+  eq eEliminate(< L : LTS | >) = < L : LTS | > [owise] .
+
+  eq replace(state(Ids), state(Ids'), < L : LTS | initial : state(Ids) >)
+    = replace(state(Ids), state(Ids'), < L : LTS | initial : state((Ids, Ids')) >) .
+  eq replace(state(Ids), state(Ids'), < L : LTS | initial : state(Ids') >)
+    = replace(state(Ids), state(Ids'), < L : LTS | initial : state((Ids, Ids')) >) .
+  eq replace(state(Ids), state(Ids'), < L : LTS | states : (state(Ids), Sts) >)
+    = replace(state(Ids), state(Ids'), < L : LTS | states : (state((Ids, Ids')), Sts) >) .
+  eq replace(state(Ids), state(Ids'), < L : LTS | states : (state(Ids'), Sts) >)
+    = replace(state(Ids), state(Ids'), < L : LTS | states : (state((Ids, Ids')), Sts) >) .
+  eq replace(state(Ids), state(Ids'), < L : LTS | transitions : (transition(state(Ids), Label, state(Ids'')), Trs) >)
+    = replace(state(Ids), state(Ids'), < L : LTS | transitions : (transition(state((Ids, Ids')), Label, state(Ids'')), Trs) >) .
+  eq replace(state(Ids), state(Ids'), < L : LTS | transitions : (transition(state(Ids'), Label, state(Ids'')), Trs) >)
+    = replace(state(Ids), state(Ids'), < L : LTS | transitions : (transition(state((Ids, Ids')), Label, state(Ids'')), Trs) >) .
+  eq replace(state(Ids), state(Ids'), < L : LTS | transitions : (transition(state(Ids''), Label, state(Ids)), Trs) >)
+    = replace(state(Ids), state(Ids'), < L : LTS | transitions : (transition(state(Ids''), Label, state((Ids, Ids'))), Trs) >) .
+  eq replace(state(Ids), state(Ids'), < L : LTS | transitions : (transition(state(Ids''), Label, state(Ids')), Trs) >)
+    = replace(state(Ids), state(Ids'), < L : LTS | transitions : (transition(state(Ids''), Label, state((Ids, Ids'))), Trs) >) .
+  eq replace(St, St', < L : LTS | >) = < L : LTS | > [owise] .
+
+  ---- this alternative implementation is tooo painful for Maude
+  op replace : State Object -> Object .
+  eq replace(state((Ids, NeIds)), < L : LTS | initial : state(Ids) >)
+    = replace(state((Ids, NeIds)), < L : LTS | initial : state((Ids, NeIds)) >) .
+  eq replace(state((Ids, NeIds)), < L : LTS | states : (state(Ids), Sts) >)
+    = replace(state((Ids, NeIds)), < L : LTS | states : (state((Ids, NeIds)), Sts) >) .
+  eq replace(state((Ids, NeIds)), < L : LTS | transitions : (transition(state(Ids), Label, state(Ids')), Trs) >)
+    = replace(state((Ids, NeIds)), < L : LTS | transitions : (transition(state((Ids, NeIds)), Label, state(Ids')), Trs) >) .
+  eq replace(state((Ids, NeIds)), < L : LTS | transitions : (transition(state(Ids'), Label, state(Ids)), Trs) >)
+    = replace(state((Ids, NeIds)), < L : LTS | transitions : (transition(state(Ids'), Label, state((Ids, NeIds))), Trs) >) .
+  eq replace(St, < L : LTS | >) = < L : LTS | > [owise] .
+)
+
+---(
+  ---- We use the procedure described in Hopcroft, Motwani, and Ullman (2001)
+
+  ---- epsilon closure
+  ---- as defined in Hopcroft, Motwani, and Ullman (2001), Section 2.5.3, page 75
+  op eClosure : Object State -> Set{State} .
+  op eClosure : Set{State} Set{Transition} -> Set{State} .
+  eq eClosure(< L : LTS | transitions : Trs >, St)
+    = eClosure(St, Trs) .
+ ceq eClosure((St, Sts), (transition(St, "tau", St'), Trs))
+    = eClosure((St, St', Sts), (transition(St, "tau", St'), Trs))
+    if not St' in (St, Sts) .
+  eq eClosure(Sts, Trs) = Sts [owise] .  
+
+  op eClosureState : Object State -> State .
+  op eClosureState : Set{State} Set{Id} -> State .
+  eq eClosureState(LTS, St) = eClosureState(eClosure(LTS, St), empty) .
+  eq eClosureState((state(Id), Sts), Ids) = eClosureState(Sts, (Id, Ids)) .
+  eq eClosureState(empty, Ids) = state(Ids) .
+
+  op eClosureStates : Object Set{State} -> Set{State} .
+  eq eClosureStates(LTS, (St, Sts)) = eClosureState(LTS, St), eClosureStates(LTS, Sts) .
+  eq eClosureStates(LTS, empty) = empty .
+
+  op eEliminate : Object -> Object .
+  op eEliminate : Object State Set{Transition} Set{State} Set{State} Set{Transition} Set{Transition} -> Object .
+  op eEliminate2 : Object State Set{Transition} Set{State} State Set{State} Set{Transition} Set{Transition} -> Object .
+
+  ---- epsilon elimination
+  ---- as defined in Hopcroft, Motwani, and Ullman (2001), Section 2.5.5, page 77-
+  eq eEliminate(< L : LTS | initial : St, transitions : Trs, alphabet : Alp >)
+   = eEliminate(< L : LTS | initial : St, transitions : Trs, alphabet : Alp >, 
+       eClosureState(< L : LTS | initial : St, transitions : Trs, alphabet : Alp >, St), ---- e-closure of initial state
+       Trs,                                                                              ---- original transitions 
+       eClosureState(< L : LTS | initial : St, transitions : Trs, alphabet : Alp >, St), ---- states to consider, initialized with the e-closure of the initial state 
+       empty,                                                                            ---- states already considered
+       Trs,                                                                              ---- transitions to be considered 
+       empty) .                                                                          ---- set of created transitions
+
+  eq eEliminate(LTS, St0, Trs, Sts, Sts', Trs', (transition(St, Label, St'), transition(St, Label, St''), Trs''))
+   = eEliminate(LTS, St0, Trs, 
+       if join(St', St'') in (Sts, Sts') then Sts else (join(St', St''), Sts) fi, 
+       Sts', Trs', (transition(St, Label, join(St', St'')), Trs'')) .
+  eq eEliminate(< L : LTS | initial : St, states : Sts, transitions : Trs, alphabet : Alp >, St', Trs', empty, Sts', Trs'', Trs''') 
+   = remove(< L : LTS | initial : St', states : Sts', transitions : Trs''', alphabet : Alp >) .
+  eq eEliminate(LTS, St0, Trs, (St, Sts), Sts', Trs', Trs'')
+   = eEliminate2(LTS, St0, Trs, Sts, St, Sts', Trs', Trs'') 
+   [owise] .
+
+  op remove : Object -> Object .
+  op trInto : State Set{Transition} -> Bool .
+
+ ceq remove(< L : LTS | initial : St, states : (St', Sts), transitions : (transition(St', Label, St''), Trs) >)
+   = remove(< L : LTS | initial : St, states : Sts, transitions : Trs >)
+   if St =/= St'
+   /\ not trInto(St', (transition(St', Label, St''), Trs)) .
+  eq remove(LTS) = LTS [owise] .
+
+  eq trInto(St, (transition(St', Label, St), Trs)) = true .
+  eq trInto(St, Trs) = false [owise] .
+
+ ---- For a fixed state state((Id, Ids)), all transitions from any of the individual states it comes from are added 
+ ---- as leaving such a fixed state. If the target state has not been seen before either in the set of states already 
+ ---- processed or in the set of states to obe processed, then it is added as new state. 
+ ceq eEliminate2(LTS, St0, Trs, Sts, state((Id, Ids)), Sts', (transition(state(Id), Label, St), Trs'), Trs'') 
+    = eEliminate2(LTS, St0, Trs, 
+        if eClosureState(LTS, St) in (Sts, Sts') then Sts else (eClosureState(LTS, St), Sts) fi, 
+        state((Id, Ids)), Sts', 
+        Trs', (transition(state((Id, Ids)), Label, eClosureState(LTS, St)), Trs'')) 
+    if Label =/= "tau" .
+  ---- If there are no further transitions for the fixed state, it goes back to the eEliminate operation with the 
+  ---- original set of transitions. 
+  eq eEliminate2(LTS, St0, Trs, Sts, St, Sts', Trs', Trs'') 
+    = eEliminate(LTS, St0, Trs, Sts, (St, Sts'), Trs, Trs'') 
+    [owise] .
+
+  op join : State State -> State .
+  eq join(state(Ids), state(Ids')) = state((Ids, Ids')) .
+---)
+endom 
+
+eof
+rew ndbisim(eEliminate(ex3), eEliminate(ex4)) . --- expected true
+rew ndbisim(eEliminate(ex5), eEliminate(ex6)) . --- expected true
+rew ndbisim(eEliminate(ex9), eEliminate(ex10)) . --- expected true
+rew ndbisim(eEliminate(ex7), eEliminate(ex8)) . --- expected true
+
