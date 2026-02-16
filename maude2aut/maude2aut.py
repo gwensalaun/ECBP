@@ -1,6 +1,6 @@
 #
 #
-# Name: maude2aut.py - transformation of Maude LTS to CADP LTS (aut) + bisim check with CADP
+# Name:   maude2aut.py - transformation of Maude LTS to CADP LTS (aut) + bisim check with CADP
 # Authors: Gwen and Paco
 #
 ################################################################################
