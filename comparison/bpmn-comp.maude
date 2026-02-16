@@ -27,11 +27,10 @@ omod BPMN-COMPARISON is
   pr BPMN-LTS .
   inc WRITE-TO-FILE .
 
-  op box(_,_,_) : Id Id Set{Node} -> Node [format (ni d d d d d ++ d --)] .
-  op box(_,_,_) : Id Maybe{Id} Set{Node} -> Node [format (ni d d d d d ++ d --)] .
+  op box(_,_,_) : Id Set{Id} Set{Node} -> Node [format (ni d d d d d ++ d --)] .
 
   vars P P1 P2 N N1 N2 N3 N4 N5 N6 F F' F1 F2 F3 F4 F5 F6 F11 F12 F21 F22 : Id .
-  vars FS FS' FS1 FS2 FS3 FS4 FS5 FS6 FS7 FS8 : Set{Id} .
+  vars FS FS' FS1 FS2 FS3 FS4 FS5 FS6 FS7 FS8 FS9 FS10 : Set{Id} .
   vars Nodes Nodes1 Nodes2 Nodes3 Nodes4 Nodes5 Nodes6 Nodes7 Nodes8 Nodes9 Nodes10 Nodes11 Nodes12 : Set{Node} .
   vars G G' : Gateway .
   var  D Text FileName : String .
@@ -103,28 +102,32 @@ omod BPMN-COMPARISON is
    = generateFilesAux((Process1, Process2, BS), Text, Index) .
 
   eq generateFilesAux(
-      (< P1 : Process | nodes : (box(F11, F12, Nodes1), Nodes2) >, 
-       < P2 : Process | nodes : (box(F21, F22, Nodes3), Nodes4) >, 
+      (< P1 : Process | nodes : (box(F11, FS1, Nodes1), Nodes2) >, 
+       < P2 : Process | nodes : (box(F21, FS2, Nodes3), Nodes4) >, 
        ((F11, F21), BS)), Text, Index)
     = to "fw" : write("output_" + Text + "_" + string(Index, 10) + "_0" + ".aut",
-                  toString(bpmn2lts(< P1 : Process | nodes : (start("start", F11), end("end", F12), Nodes1) >)))
+                  toString(bpmn2lts(< P1 : Process | nodes : (start("start", F11), generateEndEvents(FS1), Nodes1) >)))
       to "fw" : write("output_" + Text + "_" + string(Index, 10) + "_1" + ".aut",
-                  toString(bpmn2lts(< P2 : Process | nodes : (start("start", F21), end("end", F22), Nodes3) >)))
+                  toString(bpmn2lts(< P2 : Process | nodes : (start("start", F21), generateEndEvents(FS2), Nodes3) >)))
       generateFilesAux((< P1 : Process | nodes : Nodes2 >, < P2 : Process | nodes : Nodes4 >, BS), Text, s Index) .
   eq generateFilesAux((Process1, Process2, empty), Text, Index) = none .
   eq generateFilesAux((Process1, Process2, BS), Text, Index) = none [owise] .
 
+  op generateEndEvents : Set{Id} -> Set{Node} .
+  eq generateEndEvents((F, FS)) = (end("end", F), generateEndEvents(FS)) .
+  eq generateEndEvents(empty) = empty .
+
   eq compareBoxes(
-      (< P1 : Process | nodes : (box(F11, F12, Nodes1), Nodes2) >, 
-       < P2 : Process | nodes : (box(F21, F22, Nodes3), Nodes4) >, 
+      (< P1 : Process | nodes : (box(F11, FS1, Nodes1), Nodes2) >, 
+       < P2 : Process | nodes : (box(F21, FS2, Nodes3), Nodes4) >, 
        ((F11, F21), BS)))
-    = if compareB(< P1 : Process | nodes : (start("start", F11), end("end", F12), Nodes1) >, 
-                  < P2 : Process | nodes : (start("start", F21), end("end", F22), Nodes3) >)
+    = if compareB(< P1 : Process | nodes : (start("start", F11), generateEndEvents(FS1), Nodes1) >, 
+                  < P2 : Process | nodes : (start("start", F21), generateEndEvents(FS2), Nodes3) >)
       then compareBoxes(
             (< P1 : Process | nodes : Nodes2 >, 
              < P2 : Process | nodes : Nodes4 >, 
              BS)) 
-      else failure(box(F11, F12, Nodes1), box(F21, F22, Nodes3), "not bisimilar")
+      else failure(box(F11, FS1, Nodes1), box(F21, FS2, Nodes3), "not bisimilar")
       fi .
   eq compareBoxes((Process1, Process2, empty)) = success .
   eq compareBoxes((Process1, Process2, BS)) = failure [owise] .
@@ -145,9 +148,15 @@ omod BPMN-COMPARISON is
                 (F1, F3)) .     ---- paired boxes
   ---- then the end nodes are taken out of the boxes
   eq findBoxes1(< P1 : Process | nodes : (box(F1, FS1, (end(N1, F2), Nodes1)), Nodes2) >,
-                < P2 : Process | nodes : (box(F3, FS2, (end(N2, F4), Nodes3)), Nodes4) >,
+                < P2 : Process | nodes : (box(F3, FS2, Nodes3), Nodes4) >,
                 (F1, F3))
    = findBoxes1(< P1 : Process | nodes : (box(F1, (FS1, F2), Nodes1), (Nodes2, end(N1, F2))) >,
+                < P2 : Process | nodes : (box(F3, FS2, Nodes3), Nodes4) >,
+                (F1, F3)) .
+  eq findBoxes1(< P1 : Process | nodes : (box(F1, FS1, Nodes1), Nodes2) >,
+                < P2 : Process | nodes : (box(F3, FS2, (end(N2, F4), Nodes3)), Nodes4) >,
+                (F1, F3))
+   = findBoxes1(< P1 : Process | nodes : (box(F1, FS1, Nodes1), Nodes2) >,
                 < P2 : Process | nodes : (box(F3, (FS2, F4), Nodes3), (Nodes4, end(N2, F4))) >,
                 (F1, F3)) .
   ---- when there are no end events left the matching process begins
@@ -174,11 +183,11 @@ omod BPMN-COMPARISON is
                 FS3, FS4, ((F3, F6), BS)) .
  ---- brings out the task on the right (same task descriptions)
   eq [task-on-the-right] :
-     findBoxes2(< P1 : Process | nodes : (box(F1, F2, (task(N1, D, F3, F2), Nodes1)), Nodes2) >, 
-                < P2 : Process | nodes : (box(F4, F5, (task(N2, D, F6, F5), Nodes3)), Nodes4) >, 
+     findBoxes2(< P1 : Process | nodes : (box(F1, (FS3, F2), (task(N1, D, F3, F2), Nodes1)), Nodes2) >, 
+                < P2 : Process | nodes : (box(F4, (FS4, F5), (task(N2, D, F6, F5), Nodes3)), Nodes4) >, 
                 FS1, FS2, ((F1, F4), BS))
-   = findBoxes2(< P1 : Process | nodes : (box(F1, F3, Nodes1), task(N1, D, F3, F2), Nodes2) >, 
-                < P2 : Process | nodes : (box(F4, F6, Nodes3), task(N2, D, F6, F5), Nodes4) >, 
+   = findBoxes2(< P1 : Process | nodes : (box(F1, (FS3, F3), Nodes1), task(N1, D, F3, F2), Nodes2) >, 
+                < P2 : Process | nodes : (box(F4, (FS4, F6), Nodes3), task(N2, D, F6, F5), Nodes4) >, 
                 FS1, FS2, ((F1, F4), BS)) .
   ---- If a split is at the left front, it may correspond to a fresh split starting a new split-merge pair 
   ---- or it may correspond to a loop, i.e., there is a previous merge.
@@ -190,14 +199,14 @@ omod BPMN-COMPARISON is
  ceq [split-on-the-left-fresh] :
      findBoxes2(< P1 : Process | nodes : (box(F1, FS5, (split(N1, G, F1, FS1), Nodes1)), Nodes2) >, 
                 < P2 : Process | nodes : (box(F4, FS6, (split(N3, G, F4, FS3), Nodes3)), Nodes4) >, 
-                FS5, FS6, ((F1, F4), BS))
+                FS9, FS10, ((F1, F4), BS))
    = findBoxes2(< P1 : Process | nodes : (Nodes7,                                             ---- nested boxes in the split-merge box
                                           box(F3, FS5, Nodes8),                                ---- box with the rest after the merge
                                           split(N1, G, F1, FS1), merge(N2, G, FS2, F3), Nodes2) >, ---- pulled out of the box
                 < P2 : Process | nodes : (Nodes9,                                             ---- nested boxes in the split-merge box 
                                           box(F6, FS6, Nodes10),                               ---- box with the rest after the merge
                                           split(N3, G, F4, FS3), merge(N4, G, FS4, F6), Nodes4) >, ---- pulled out of the box
-                FS5, FS6, ((F3, F6), BS, BS')) 
+                FS9, FS10, ((F3, F6), BS, BS')) 
    if _++_++_++_(Nodes7, merge(N2, G, FS2, F3), Nodes8, FS7) := matchingMerge(G, FS1, Nodes1, FS5) 
    /\ Nodes9 ++ merge(N4, G, FS4, F6) ++ Nodes10 ++ FS8 := matchingMerge(G, FS3, Nodes3, FS6) 
    /\ BS' := pairUpBoxes(Nodes7, Nodes9)                                   ---- pair up branch boxes
@@ -210,28 +219,28 @@ omod BPMN-COMPARISON is
   ---- flows of the looping merge plus the flow closing the box. It returns a set of boxes, that are then paired 
   ---- up by the pairUpBoxes auxiliary operation.
  ceq [split-on-the-left-loop] :
-     findBoxes2(< P1 : Process | nodes : (box(F1, F2, (split(N1, G, F1, FS1), Nodes1)), Nodes2) >, 
-                < P2 : Process | nodes : (box(F4, F5, (split(N3, G, F4, FS3), Nodes3)), Nodes4) >, 
+     findBoxes2(< P1 : Process | nodes : (box(F1, FS2, (split(N1, G, F1, FS1), Nodes1)), Nodes2) >, 
+                < P2 : Process | nodes : (box(F4, FS4, (split(N3, G, F4, FS3), Nodes3)), Nodes4) >, 
                 FS5, FS6, ((F1, F4), BS))
    = findBoxes2(< P1 : Process | nodes : (Nodes7,      ---- nested boxes in the split-merge box + box with the rest after the merge
                                           split(N1, G, F1, FS1), Nodes2) >, ---- split pulled out of the box
                 < P2 : Process | nodes : (Nodes9,      ---- nested boxes in the split-merge box + box with the rest after the merge
                                           split(N3, G, F4, FS3), Nodes4) >, ---- split pulled out of the box
                 empty, empty, (BS, BS')) 
-   if Nodes7 := matchingLoop(FS1, (FS5, F2), Nodes1) ---- (FS5,F2) can be reached from FS1
-   /\ Nodes9 := matchingLoop(FS3, (FS6, F5), Nodes3) 
+   if Nodes7 := matchingLoop(FS1, (FS5, FS2), Nodes1) ---- (FS5,F2) can be reached from FS1
+   /\ Nodes9 := matchingLoop(FS3, (FS6, FS4), Nodes3) 
    /\ BS' := pairUpBoxes(Nodes7, Nodes9) .
   ---- merge on the right, matching split must be searched backwards
   ---- each box [...-merge] is broken into two: [...] [split-...-merge]
  ceq [merge-on-the-right] :
-     findBoxes2(< P1 : Process | nodes : (box(F1, F2, (merge(N2, G, FS2, F2), Nodes1)), Nodes2) >, 
-                < P2 : Process | nodes : (box(F4, F5, (merge(N4, G, FS4, F5), Nodes3)), Nodes4) >, 
+     findBoxes2(< P1 : Process | nodes : (box(F1, (FS7, F2), (merge(N2, G, FS2, F2), Nodes1)), Nodes2) >, 
+                < P2 : Process | nodes : (box(F4, (FS8, F5), (merge(N4, G, FS4, F5), Nodes3)), Nodes4) >, 
                 FS5, FS6, ((F1, F4), BS))
    = findBoxes2(< P1 : Process | nodes : (Nodes7, 
-                                          box(F1, F3, Nodes8),
+                                          box(F1, (FS7, F3), Nodes8),
                                           split(N1, G, F3, FS1), merge(N2, G, FS2, F2), Nodes2) >, 
                 < P2 : Process | nodes : (Nodes9, 
-                                          box(F4, F6, Nodes10),
+                                          box(F4, (FS8, F6), Nodes10),
                                           split(N3, G, F6, FS3), merge(N4, G, FS4, F5), Nodes4) >, 
                 FS5, FS6, ((F1, F4), BS, BS')) 
    if Nodes7 ++ split(N1, G, F3, FS1) ++ Nodes8 := matchingSplit(G, FS2, Nodes1)
@@ -242,8 +251,8 @@ omod BPMN-COMPARISON is
   ---- each box [merge-...] is broken into two: [merge-...-split] [...]
   ---- with the nested boxes between the merge and the split paired up
  ceq [merge-on-the-left] :
-     findBoxes2(< P1 : V1:Process | nodes : (box(F1, F2, (merge(N1, G, (F1, FS1), F3), Nodes1)), Nodes2), Atts1 >, 
-                < P2 : V2:Process | nodes : (box(F4, F5, (merge(N3, G, (F4, FS2), F6), Nodes3)), Nodes4), Atts2 >, 
+     findBoxes2(< P1 : V1:Process | nodes : (box(F1, (FS3, F2), (merge(N1, G, (F1, FS1), F3), Nodes1)), Nodes2), Atts1 >, 
+                < P2 : V2:Process | nodes : (box(F4, (FS4, F5), (merge(N3, G, (F4, FS2), F6), Nodes3)), Nodes4), Atts2 >, 
                 FS5, FS6, ((F1, F4), BS))
    = findBoxes2(< P1 : V1:Process | 
                   nodes : (Nodes5,                                            ---- nested boxes, closing split and box F3-F2
@@ -254,8 +263,8 @@ omod BPMN-COMPARISON is
                 FS5, FS6, (BS, BS')) 
    if (< P1 : V1:Process | nodes : Nodes5, Atts3 >, < P2 : V2:Process | nodes : Nodes6, Atts4 >, BS') 
          ---- the closing split is supposed to be in the resulting set of nodes
-      := findBoxes2(< P1 : V1:Process | nodes : box(F3, F2, Nodes1), Atts1 >, ---- focuses on the box to identify the loop
-                    < P2 : V2:Process | nodes : box(F6, F5, Nodes3), Atts2 >, 
+      := findBoxes2(< P1 : V1:Process | nodes : box(F3, (FS3, F2), Nodes1), Atts1 >, ---- focuses on the box to identify the loop
+                    < P2 : V2:Process | nodes : box(F6, (FS4, F5), Nodes3), Atts2 >, 
                     FS1, FS2,     ---- looping flows 
                     (F3, F6))     ---- binding of the only current boxes
    [dnt] .
@@ -318,10 +327,10 @@ omod BPMN-COMPARISON is
 
   eq matchingSplit(G, (box((F1, FS1), F2, Nodes1), Nodes2), (F1, FS2), (task(N, D, F3, F1), Nodes3)) 
    = matchingSplit(G, (box((F3, FS1), F2, (Nodes1, task(N, D, F3, F1))), Nodes2), (F3, FS2), Nodes3) .
-  eq matchingSplit(G, (box((F1, FS1), F2, Nodes1), Nodes2), (F1, FS2), (merge(N, G, FS3, F1), Nodes3)) 
-   = matchingSplit(G, (box((FS3, FS1), F2, (Nodes1, merge(N, G, FS3, F1))), Nodes2), (FS3, FS2), Nodes3) .
- ceq matchingSplit(G, (box((FS1, FS2), F1, Nodes1), Nodes2), (FS1, FS3), (split(N, G, F2, FS1), Nodes3)) 
-   = matchingSplit(G, (box((F2, FS2), F1, (Nodes1, split(N, G, F2, FS1))), Nodes2), (F2, FS3), Nodes3) 
+  eq matchingSplit(G, (box((F1, FS1), F2, Nodes1), Nodes2), (F1, FS2), (merge(N, G', FS3, F1), Nodes3)) 
+   = matchingSplit(G, (box((FS3, FS1), F2, (Nodes1, merge(N, G', FS3, F1))), Nodes2), (FS3, FS2), Nodes3) .
+ ceq matchingSplit(G, (box((FS1, FS2), F1, Nodes1), Nodes2), (FS1, FS3), (split(N, G', F2, FS1), Nodes3)) 
+   = matchingSplit(G, (box((F2, FS2), F1, (Nodes1, split(N, G', F2, FS1))), Nodes2), (F2, FS3), Nodes3) 
    if FS3 =/= empty . 
 
   eq matchingSplit(G, Nodes1, FS, (split(N, G, F, FS), Nodes2)) 
@@ -375,29 +384,35 @@ omod BPMN-COMPARISON is
                  (box(F2, F2, empty), Nodes4),
                  ((F1, F2), BS)) .
   ---- if there are only one-and-one boxes then they must be matched
-  eq pairUpBoxes(box(F1, F2, Nodes1), 
-                 box(F4, F5, Nodes3), 
+  eq pairUpBoxes(box(F1, FS2, Nodes1), 
+                 box(F4, FS5, Nodes3), 
                  Nodes5, Nodes6, BS)
    = ((F1, F4), BS) .
   ---- boxes with matching tasks on the left front
-  eq pairUpBoxes((box(F1, F2, (task(N1, D, F1, F3), Nodes1)), Nodes2), 
-                 (box(F4, F5, (task(N2, D, F4, F6), Nodes3)), Nodes4), 
+  eq pairUpBoxes((box(F1, FS2, (task(N1, D, F1, F3), Nodes1)), Nodes2), 
+                 (box(F4, FS5, (task(N2, D, F4, F6), Nodes3)), Nodes4), 
                  Nodes5, Nodes6, BS)
    = pairUpBoxes(Nodes2, Nodes4, 
-                 (box(F1, F2, (task(N1, D, F1, F3), Nodes1)), Nodes5), 
-                 (box(F4, F5, (task(N2, D, F4, F6), Nodes3)), Nodes6),
+                 (box(F1, FS2, (task(N1, D, F1, F3), Nodes1)), Nodes5), 
+                 (box(F4, FS5, (task(N2, D, F4, F6), Nodes3)), Nodes6),
                  ((F1, F4), BS)) .
   ---- matching split with matching boxes
- ceq pairUpBoxes((box(F1, F2, (split(N1, G, F1, FS1), Nodes1)), Nodes2), 
-                 (box(F3, F4, (split(N2, G, F3, FS2), Nodes3)), Nodes4), 
+ ceq pairUpBoxes((box(F1, FS3, (split(N1, G, F1, FS1), Nodes1)), Nodes2), 
+                 (box(F3, FS4, (split(N2, G, F3, FS2), Nodes3)), Nodes4), 
                  Nodes5, Nodes6, BS)
    = pairUpBoxes(Nodes2, Nodes4, 
-                 (box(F1, F2, (split(N1, G, F1, FS1), Nodes1)), Nodes5), 
-                 (box(F3, F4, (split(N2, G, F3, FS2), Nodes3)), Nodes6),
-                 ((F1, F4), BS)) 
+                 (box(F1, FS3, (split(N1, G, F1, FS1), Nodes1)), Nodes5), 
+                 (box(F3, FS4, (split(N2, G, F3, FS2), Nodes3)), Nodes6),
+                 ((F1, F3), BS)) 
    if match(FS1, Nodes1, FS2, Nodes3) .
 
   eq match((F1, FS1), (task(N1, D, F1, F2), Nodes1), (F3, FS2), (task(N2, D, F3, F4), Nodes2))
    = match(FS1, Nodes1, FS2, Nodes2) .
   eq match(FS1, Nodes1, FS2, Nodes2) = false [owise] . ---- TODO: other cases may be considered
 endom
+
+eof
+set print attribute on .
+set trace on .
+set trace select on . 
+trace select findBoxes2 .

@@ -8,9 +8,11 @@ sload identifier.maude
 ---- States ------------------------------------------------------------------
 fmod STATE is
   pr IDENTIFIER .
+  pr NAT .
 
-  sort State .
-  op state : Id -> State [ctor] .
+  sort State . 
+----  op state : Id -> State [ctor] .
+  op state : Nat -> State [ctor] .
 endfm
 
 view State from TRIV to STATE is
@@ -82,16 +84,14 @@ omod LTS is
 
   ---- Takes an object representing an LTS and gives back a string with its AUT representation
   op toString : Object ~> String .
-  op toString : Object Map{State, Nat} Nat String -> String .
+  op toString : Object String -> String .
   eq toString(< LTS1 : LTS | initial : S, states : (S, Sts), transitions : Trs >) 
-   = toString(< LTS1 : LTS | states : Sts >, S |-> 0, 1, 
-       "des(0, " + string(| Trs |, 10) + ", " + string(s | Sts |, 10) + ")") .
-  eq toString(< LTS1 : LTS | states : (S, Sts) >, M, I, Str) 
-   = toString(< LTS1 : LTS | states : Sts >, (M, S |-> I), s I, Str) .
-  eq toString(< LTS1 : LTS | transitions : (transition(S1, L, S2), Trs) >, (M, S1 |-> I1, S2 |-> I2), I, Str) 
-   = toString(< LTS1 : LTS | transitions : Trs >, (M, S1 |-> I1, S2 |-> I2), I, 
+   = toString(< LTS1 : LTS | states : Sts >, 
+       "des(0, " + string(| Trs |, 10) + ", " + string(s s s | Sts |, 10) + ")") .
+  eq toString(< LTS1 : LTS | transitions : (transition(state(I1), L, state(I2)), Trs) >, Str) 
+   = toString(< LTS1 : LTS | transitions : Trs >, 
        Str + "\n" + "(" + string(I1, 10) + ", \"" + L + "\", " + string(I2, 10) + ")") .
-  eq toString(< LTS1 : LTS | transitions : empty >, M, I, Str) = Str .
+  eq toString(< LTS1 : LTS | transitions : empty >, Str) = Str .
 
   --- strong bisimulation (equations)
   eq bisim(
@@ -196,7 +196,7 @@ omod LTS is
         (S1, VIS1),
         (S2, VIS2)
         )
-    if not (S1 in VIS1 and S2 in VIS2) /\ (L =/= "tau") /\ outgoingTransitions(S1, T1) /\ outgoingTransitions(S2, T2) .
+    if not (S1 in VIS1 and S2 in VIS2) /\ (L =/= "i") /\ outgoingTransitions(S1, T1) /\ outgoingTransitions(S2, T2) .
     --- at least one state has not been visited
 
   --- rule with matching transitions, NO recursive call and one unvisited state
@@ -214,14 +214,14 @@ omod LTS is
         (S1, VIS1),
         (S2, VIS2)
         )
-    if not (S1 in VIS1 and S2 in VIS2) /\ (L =/= "tau") /\ noOutgoingTransitions(S1, T1) /\ noOutgoingTransitions(S2, T2) .
+    if not (S1 in VIS1 and S2 in VIS2) /\ (L =/= "i") /\ noOutgoingTransitions(S1, T1) /\ noOutgoingTransitions(S2, T2) .
     --- at least one state has not been visited
 
   --- rules with tau action (skip) + rec. call -> for first LTS
   ceq [tbisimRec-tau1]: tbisimRec(
       S1,
       S2,
-      < LTS1 : LTS | transitions : (transition(S1, "tau", S11), T1) >,
+      < LTS1 : LTS | transitions : (transition(S1, "i", S11), T1) >,
       < LTS2 : LTS | transitions : T2 >,
       VIS1,
       VIS2
@@ -236,7 +236,7 @@ omod LTS is
         )
         and
         tbisimRec(S11, S2,
-        < LTS1 : LTS | transitions : (transition(S1, "tau", S11), T1) >,
+        < LTS1 : LTS | transitions : (transition(S1, "i", S11), T1) >,
         < LTS2 : LTS | transitions : T2 >,
         (S1, VIS1),
         VIS2
@@ -247,13 +247,13 @@ omod LTS is
   ceq [tbisimRec-tau1-bis]: tbisimRec(
       S1,
       S2,
-      < LTS1 : LTS | transitions : (transition(S1, "tau", S11), T1) >,
+      < LTS1 : LTS | transitions : (transition(S1, "i", S11), T1) >,
       < LTS2 : LTS | transitions : T2 >,
       VIS1,
       VIS2
       )
     = tbisimRec(S11, S2,
-        < LTS1 : LTS | transitions : (transition(S1, "tau", S11), T1) >,
+        < LTS1 : LTS | transitions : (transition(S1, "i", S11), T1) >,
         < LTS2 : LTS | transitions : T2 >,
         (S1, VIS1),
         VIS2
@@ -265,7 +265,7 @@ omod LTS is
       S1,
       S2,
       < LTS1 : LTS | transitions : T1 >,
-      < LTS2 : LTS | transitions : (transition(S2, "tau", S22), T2) >,
+      < LTS2 : LTS | transitions : (transition(S2, "i", S22), T2) >,
       VIS1,
       VIS2
       )
@@ -280,7 +280,7 @@ omod LTS is
         and
         tbisimRec(S1, S22,
         < LTS1 : LTS | transitions : T1 >,
-        < LTS2 : LTS | transitions : (transition(S2, "tau", S22), T2) >,
+        < LTS2 : LTS | transitions : (transition(S2, "i", S22), T2) >,
         VIS1,
         (S2, VIS2)
         )
@@ -291,13 +291,13 @@ omod LTS is
       S1,
       S2,
       < LTS1 : LTS | transitions : T1 >,
-      < LTS2 : LTS | transitions : (transition(S2, "tau", S22), T2) >,
+      < LTS2 : LTS | transitions : (transition(S2, "i", S22), T2) >,
       VIS1,
       VIS2
       )
     = tbisimRec(S1, S22,
         < LTS1 : LTS | transitions : T1 >,
-        < LTS2 : LTS | transitions : (transition(S2, "tau", S22), T2) >,
+        < LTS2 : LTS | transitions : (transition(S2, "i", S22), T2) >,
         VIS1,
         (S2, VIS2)
         )
@@ -648,7 +648,7 @@ omod LTS is
       ndtbisimRec(
         S1,
         S2,
-        < LTS1 : LTS | transitions : (transition(S1, "tau", S11), T1) >,
+        < LTS1 : LTS | transitions : (transition(S1, "i", S11), T1) >,
         < LTS2 : LTS | >,
         VIS1,
         VIS2
@@ -678,7 +678,7 @@ omod LTS is
         S1,
         S2,
         < LTS1 : LTS | >,
-        < LTS2 : LTS | transitions : (transition(S2, "tau", S22), T2) >,
+        < LTS2 : LTS | transitions : (transition(S2, "i", S22), T2) >,
         VIS1,
         VIS2
         )
@@ -732,136 +732,136 @@ omod LTS is
   --- examples
 
   eq ex1 = < "lts1" : LTS
-           | initial : state("s1"),
-             states : (state("s1"), state("s2"), state("s3"), state("s4")),
+           | initial : state(1),
+             states : (state(1), state(2), state(3), state(4)),
              transitions : (
-               transition(state("s1"), "a", state("s2")),
-               transition(state("s2"), "b", state("s3")),
-               transition(state("s3"), "a", state("s2")),
-               transition(state("s2"), "c", state("s4"))
+               transition(state(1), "a", state(2)),
+               transition(state(2), "b", state(3)),
+               transition(state(3), "a", state(2)),
+               transition(state(2), "c", state(4))
              ),
              alphabet : ("a", "b", "c") > .
 
   eq ex2 = < "lts2" : LTS
-           | initial : state("s1"),
-             states : (state("s1"), state("s2"), state("s3"), state("s4"), state("s5"), state("s6")),
+           | initial : state(1),
+             states : (state(1), state(2), state(3), state(4), state(5), state(6)),
              transitions : (
-               transition(state("s1"), "a", state("s2")),
-               transition(state("s2"), "b", state("s3")),
-               transition(state("s3"), "a", state("s4")),
-               transition(state("s4"), "b", state("s3")),
-               transition(state("s2"), "c", state("s5")),
-               transition(state("s4"), "c", state("s6"))
+               transition(state(1), "a", state(2)),
+               transition(state(2), "b", state(3)),
+               transition(state(3), "a", state(4)),
+               transition(state(4), "b", state(3)),
+               transition(state(2), "c", state(5)),
+               transition(state(4), "c", state(6))
              ),
              alphabet : ("a", "b", "c") > .
 
   eq ex3 = < "lts3" : LTS
-           | initial : state("s1"),
-             states : (state("s1"), state("s2"), state("s3")),
+           | initial : state(1),
+             states : (state(1), state(2), state(3)),
              transitions : (
-               transition(state("s1"), "a", state("s2")),
-               transition(state("s2"), "b", state("s3")),
-               transition(state("s3"), "a", state("s2"))
+               transition(state(1), "a", state(2)),
+               transition(state(2), "b", state(3)),
+               transition(state(3), "a", state(2))
              ),
              alphabet : ("a", "b") > .
 
   eq ex4 = < "lts4" : LTS
-           | initial : state("s1"),
-             states : (state("s1"), state("s2"), state("s3"), state("s4")),
+           | initial : state(1),
+             states : (state(1), state(2), state(3), state(4)),
              transitions : (
-               transition(state("s1"), "a", state("s2")),
-               transition(state("s2"), "b", state("s3")),
-               transition(state("s3"), "tau", state("s4")),
-               transition(state("s4"), "a", state("s2"))
+               transition(state(1), "a", state(2)),
+               transition(state(2), "b", state(3)),
+               transition(state(3), "i", state(4)),
+               transition(state(4), "a", state(2))
              ),
-             alphabet : ("a", "b", "tau") > .
+             alphabet : ("a", "b", "i") > .
 
   eq ex5 = < "lts5" : LTS
-           | initial : state("s1"),
-             states : (state("s1"), state("s2"), state("s3")),
+           | initial : state(1),
+             states : (state(1), state(2), state(3)),
              transitions : (
-               transition(state("s1"), "a", state("s2")),
-               transition(state("s1"), "b", state("s3"))
+               transition(state(1), "a", state(2)),
+               transition(state(1), "b", state(3))
              ),
              alphabet : ("a", "b") > .
 
   eq ex6 = < "lts6" : LTS
-           | initial : state("s1"),
-             states : (state("s1"), state("s2"), state("s3"), state("s4")),
+           | initial : state(1),
+             states : (state(1), state(2), state(3), state(4)),
              transitions : (
-               transition(state("s1"), "tau", state("s2")),
-               transition(state("s2"), "a", state("s3")),
-               transition(state("s1"), "b", state("s4"))
+               transition(state(1), "i", state(2)),
+               transition(state(2), "a", state(3)),
+               transition(state(1), "b", state(4))
              ),
-             alphabet : ("a", "b", "tau") > .
+             alphabet : ("a", "b", "i") > .
 
   eq ex7 = < "lts7" : LTS
-           | initial : state("s0"),
-             states : (state("s0"), state("s1"), state("s2"), state("s3")),
+           | initial : state(0),
+             states : (state(0), state(1), state(2), state(3)),
              transitions : (
-               transition(state("s0"), "a", state("s1")),
-               transition(state("s0"), "b", state("s1"))
-               ---transition(state("s0"), "a", state("s2")),
-               ---transition(state("s2"), "b", state("s1")),
-               ---transition(state("s0"), "b", state("s3")),
-               ---transition(state("s3"), "a", state("s1"))
+               transition(state(0), "a", state(1)),
+               transition(state(0), "b", state(1))
+               ---transition(state(0), "a", state(2)),
+               ---transition(state(2), "b", state(1)),
+               ---transition(state(0), "b", state(3)),
+               ---transition(state(3), "a", state(1))
              ),
              alphabet : ("a", "b") > .
 
   eq ex8 = < "lts8" : LTS
-           | initial : state("s1"),
-             states : (state("s1"), state("s2"), state("s3"), state("s4"), state("s5"), state("s6"), state("s7"), state("s8"), state("s9"), state("s10"), state("s11")),
+           | initial : state(1),
+             states : (state(1), state(2), state(3), state(4), state(5), state(6), state(7), state(8), state(9), state(10), state(11)),
              transitions : (
-               transition(state("s1"), "tau", state("s2")),
-               ---transition(state("s1"), "tau", state("s3")),
-               transition(state("s1"), "tau", state("s4")),
-               transition(state("s2"), "a", state("s5")),
-               transition(state("s5"), "tau", state("s6")),
-               ---transition(state("s3"), "tau", state("s7")),
-               ---transition(state("s7"), "a", state("s10")),
-               ---transition(state("s10"), "b", state("s11")),
-               ---transition(state("s7"), "b", state("s9")),
-               ---transition(state("s9"), "a", state("s11")),
-               ---transition(state("s11"), "tau", state("s6")),
-               transition(state("s4"), "b", state("s8")),
-               transition(state("s8"), "tau", state("s6"))
+               transition(state(1), "i", state(2)),
+               ---transition(state(1), "i", state(3)),
+               transition(state(1), "i", state(4)),
+               transition(state(2), "a", state(5)),
+               transition(state(5), "i", state(6)),
+               ---transition(state(3), "i", state(7)),
+               ---transition(state(7), "a", state(10)),
+               ---transition(state(10), "b", state(11)),
+               ---transition(state(7), "b", state(9)),
+               ---transition(state(9), "a", state(11)),
+               ---transition(state(11), "i", state(6)),
+               transition(state(4), "b", state(8)),
+               transition(state(8), "i", state(6))
              ),
-             alphabet : ("a", "b", "tau") > .
+             alphabet : ("a", "b", "i") > .
 
   eq ex9 = < "lts9" : LTS
-           | initial : state("s0"),
-             states : (state("s0"), state("s1"), state("s2"), state("s3"), state("s4"), state("s5"), state("s6"), state("s7")),
+           | initial : state(0),
+             states : (state(0), state(1), state(2), state(3), state(4), state(5), state(6), state(7)),
              transitions : (
-               transition(state("s0"), "tau", state("s1")),
-               transition(state("s1"), "a", state("s2")),
-               transition(state("s2"), "b", state("s7")),
-               transition(state("s7"), "tau", state("s3")),
-               transition(state("s1"), "tau", state("s4")),
-               transition(state("s4"), "a", state("s5")),
-               transition(state("s5"), "c", state("s6")),
-               transition(state("s6"), "tau", state("s3"))
+               transition(state(0), "i", state(1)),
+               transition(state(1), "a", state(2)),
+               transition(state(2), "b", state(7)),
+               transition(state(7), "i", state(3)),
+               transition(state(1), "i", state(4)),
+               transition(state(4), "a", state(5)),
+               transition(state(5), "c", state(6)),
+               transition(state(6), "i", state(3))
              ),
-             alphabet : ("a", "b", "c", "tau") > .
+             alphabet : ("a", "b", "c", "i") > .
 
   eq ex10 = < "lts10" : LTS
-           | initial : state("s1"),
-             states : (state("s1"), state("s2"), state("s3"), state("s4"), state("s5")),
+           | initial : state(1),
+             states : (state(1), state(2), state(3), state(4), state(5)),
              transitions : (
-               transition(state("s1"), "a", state("s2")),
-               transition(state("s2"), "c", state("s3")),
-               transition(state("s1"), "a", state("s4")),
-               transition(state("s4"), "b", state("s3"))
+               transition(state(1), "a", state(2)),
+               transition(state(2), "c", state(3)),
+               transition(state(1), "a", state(4)),
+               transition(state(4), "b", state(3))
              ),
              alphabet : ("a", "b", "c") > .
 
   eq ex11 = < "lts11" : LTS
-           | initial : state("s1"),
-             states : (state("s1"), state("s2"), state("s3"), state("s4"), state("s5")),
+           | initial : state(1),
+             states : (state(1), state(2), state(3), state(4), state(5)),
              transitions : (
-               transition(state("s1"), "a", state("s2")),
-               transition(state("s2"), "b", state("s3")),
-               transition(state("s1"), "a", state("s4")),
-               transition(state("s4"), "c", state("s3"))
+               transition(state(1), "a", state(2)),
+               transition(state(2), "b", state(3)),
+               transition(state(1), "a", state(4)),
+               transition(state(4), "c", state(3))
              ),
              alphabet : ("a", "b", "c") > .
 endom

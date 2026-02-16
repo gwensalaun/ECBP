@@ -39,24 +39,26 @@ omod BPMN-LTS is
              op _\_ to _m\_,
              op $diff to m$diff,
              op _subset_ to _msubset_,
-             op _psubset_ to _mpsubset_)){Set{Token}} .
+             op _psubset_ to _mpsubset_)){Bag{Token}} .
   ---- States are just sets of tokens, 
-  pr MAP{Set{Token}, State} .
+  pr MAP{Bag{Token}, State} .
   pr SET{Id} .
   pr META-LEVEL .
   pr CONVERSION .
+  pr MAYBE{Nat} .
 
   op lts : Oid -> Oid .
-  op state : Set{Id} -> State .
+----  op state : Set{Id} -> State .
 
   vars P L : Oid .
   vars N1 N2 N3 F1 F2 F3 Id : Id .
   var  Nodes : Set{Node} .
   vars Process LTS : Object .
-  vars Tks Tks' : Set{Token} .
-  vars Visited TBVisited : Set{Set{Token}} .
-  var  Mapping : Map{Set{Token}, State} .
+  vars Tks Tks' Tks'' : Bag{Token} .
+  var  TBVisited : Set{Bag{Token}} .
+  var  Mapping : Map{Bag{Token}, State} .
   vars Index N : Nat .
+  var  Final : Maybe{Nat} .
   vars T Label : String .
   vars Sts Sts' : Set{State} .
   vars Trs Trs' Trs'' Trs''' : Set{Transition} .
@@ -67,9 +69,9 @@ omod BPMN-LTS is
   vars St0 St St' St'' St''' : State .
 
   op bpmn2lts : Object -> [Object] .
-  op bpmn2lts2 : Object Set{Set{Token}} Set{Set{Token}} Map{Set{Token}, State} Nat Object -> Object .
+  op bpmn2lts2 : Object Set{Bag{Token}} Map{Bag{Token}, State} Nat Maybe{Nat} Object -> Object .
   op error`(_`,_`) : Object String -> [Object] [format (r o d d r o d)].
-  op bpmn2lts3 : Object Set{Token} Nat Set{Set{Token}} Set{Set{Token}} Map{Set{Token}, State} Nat Object -> Object .
+  op bpmn2lts3 : Object Bag{Token} Nat Set{Bag{Token}} Map{Bag{Token}, State} Nat Maybe{Nat} Object -> Object .
 
   ---- If there are two end nodes an error is given. 
   ---- We should possibly check for other problems in the input workflow. 
@@ -78,21 +80,21 @@ omod BPMN-LTS is
   eq bpmn2lts(< P : Process | nodes : (start(N1, F1), Nodes) >)
    = bpmn2lts2(< P : Process | nodes : (start(N1, F1), Nodes) >, 
                 token(F1), 
-                none,
-                token(F1) |-> state("s0"),
-                1,
-                < lts(P) : LTS | initial : state("s0"), states : state("s0"), transitions : empty, alphabet : empty >) 
+                token(F1) |-> state(0),
+                1, 
+                maybe{Nat}, ---- final state
+                < lts(P) : LTS | initial : state(0), states : state(0), transitions : empty, alphabet : "XXX" >) 
    [owise] .
 
-  ---- bpmn2lts2 check each of the states in the TBVisited set of configurations. 
+  ---- bpmn2lts2 checks each of the states in the TBVisited set of configurations. 
   ---- It selects one of the configurations (Tks) and invokes bpmn2lts3. Once this state
   ---- is expanded, it comes back to this operation, which finishes when there are no 
   ---- more configurations to explore in the TBVisited set. 
-  eq bpmn2lts2(Process, (Tks ; TBVisited), Visited, Mapping, Index, LTS)
-    = bpmn2lts3(Process, Tks, 0, TBVisited, Visited, Mapping, Index, LTS) .
-  eq bpmn2lts2(Process, none, Visited, Mapping, Index, LTS) = LTS .
+  eq bpmn2lts2(Process, (Tks ; TBVisited), Mapping, Index, Final, LTS)
+    = bpmn2lts3(Process, Tks, 0, TBVisited, Mapping, Index, Final, LTS) .
+  eq bpmn2lts2(Process, none, Mapping, Index, Final, LTS) = LTS .
 
-  ---- label returns the label of the executed task, or "tau" if no task was executed.
+  ---- label returns the label of the executed task, or "i" if no task was executed.
   ---- We assume that the process is using two types of tokens, of forms token(Id) and 
   ---- token(Id, T). Those of form token(Id, T) are set when a task is executed, with T 
   ---- being its label. Because of this, if there is a token of form token(Id, T), then 
@@ -100,14 +102,14 @@ omod BPMN-LTS is
   ---- The semantics of BPMN has been changed to produce this behavior. Originally, 
   ---- all tokens were of the form token(Id). However, since the rule is passing through
   ---- the task without staying there, there is no way to differenciate them. 
-  op label : Set{Token} -> Id . 
+  op label : Bag{Token} -> Id . 
   eq label((token(Id, T), Tks)) = T .
-  eq label(Tks) = "tau" [owise] .
+  eq label(Tks) = "i" [owise] .
 
   ---- normalizeTokens takes the only task token and turn it back into a regular token.
   ---- If there is a task token it is the only one, it is the result of the application 
   ---- of a rule. 
-  op normalizeTokens : Set{Token} -> Set{Token} . 
+  op normalizeTokens : Bag{Token} -> Bag{Token} . 
   eq normalizeTokens((token(Id, T), Tks)) = token(Id), Tks .
   eq normalizeTokens(Tks) = Tks [owise] .
 
@@ -120,46 +122,30 @@ omod BPMN-LTS is
   ---- map (6th arg) allows us to keep track of the naming of states. Note that 
   ---- tokens are normalized (tokens of the form token(Id, T) are turned into token(Id))
   ---- using the normalizeTokens operation. 
- ceq bpmn2lts3(Process, Tks, N, TBVisited, Visited, Mapping, Index, 
+  ---- if seen before, either in the Visited or in the TBVisited sets, it's in the keyset of the map
+             
+ ceq bpmn2lts3(Process, Tks, N, TBVisited, Mapping, Index, Final, 
        < L : LTS | states : Sts, transitions : Trs, alphabet : Alp, Atts >)
-   = if Tks' == empty ---- the process has reached the end event
-     then bpmn2lts2(Process, TBVisited, (Tks ; Visited), Mapping, Index, 
-            < L : LTS | states : Sts, transitions : Trs, alphabet : Alp, Atts >) 
-     else bpmn2lts3(Process, Tks, s N, 
-            (if normalizeTokens(Tks') min Visited
-             then empty 
-             else normalizeTokens(Tks') 
-             fi ; TBVisited), 
-            Visited, 
-            (Mapping, 
-             ---- if seem before, either in the Visited or in the TBVisited sets, it's 
-             ---- in the keyset of the map
-             if Mapping[normalizeTokens(Tks')] =/= undefined 
-             then empty 
-             else normalizeTokens(Tks') |-> state("s" + string(Index, 10))
-             fi), 
-            if Mapping[normalizeTokens(Tks')] =/= undefined 
-            then Index
-            else s Index
-            fi, 
-            < L : LTS | 
-              states : 
-                (if Mapping[normalizeTokens(Tks')] =/= undefined 
-                 then empty
-                 else state("s" + string(Index, 10))
-                 fi, 
-                 Sts), 
-              transitions : 
-                (Trs, 
-                 transition(
-                   Mapping[Tks], 
-                   label(Tks'), 
-                   if Mapping[normalizeTokens(Tks')] =/= undefined 
-                   then Mapping[normalizeTokens(Tks')]
-                   else state("s" + string(Index, 10))
-                   fi)),
-              alphabet : 
-                (Alp, (if label(Tks') == "tau" then empty else label(Tks') fi)), Atts >)
+   = if Mapping[Tks''] == undefined then 
+       bpmn2lts3(Process, Tks, s N, 
+         (Tks'' ; TBVisited), 
+         (Mapping, Tks'' |-> state(Index)), 
+         s Index, 
+         Final,
+         < L : LTS | 
+           states : (state(Index), Sts), 
+           transitions : (Trs, transition(Mapping[Tks], label(Tks'), state(Index))),
+           alphabet : (Alp, (if label(Tks') == "i" then empty else label(Tks') fi)), Atts >)
+     else 
+       bpmn2lts3(Process, Tks, s N, 
+         TBVisited, 
+         Mapping, 
+         Index, 
+         Final,
+         < L : LTS | 
+           states : Sts, 
+           transitions : (Trs, transition(Mapping[Tks], label(Tks'), Mapping[Tks''])),
+           alphabet : (Alp, (if label(Tks') == "i" then empty else label(Tks') fi)), Atts >)
      fi
    if Conf < "s" : Simulation | tokens : Tks' >
         := downTerm(
@@ -171,11 +157,22 @@ omod BPMN-LTS is
                   breadthFirst, 
                   N)), 
               none) 
+   /\ Tks'' := normalizeTokens(Tks') 
    [dnt] .
   ---- When no further rules can be applied on a state, it is moved into the Visited 
   ---- states set, so bpmn2lts2 will take the next one. 
-  eq bpmn2lts3(Process, Tks, N, TBVisited, Visited, Mapping, Index, LTS)
-   = bpmn2lts2(Process, TBVisited, (Tks ; Visited), Mapping, Index, LTS) 
+  eq bpmn2lts3(Process, Tks, N, TBVisited, Mapping, Index, Final, < L : LTS | states : Sts, transitions : Trs >)
+   = if Tks == empty then 
+       if Final == maybe{Nat} then 
+         bpmn2lts2(Process, TBVisited, Mapping, s Index, Index, 
+           < L : LTS | states : (Sts, state(Index)), 
+                       transitions : (Trs, transition(Mapping[Tks], "XXX", state(Index))) >) 
+       else 
+         bpmn2lts2(Process, TBVisited, Mapping, Index, Final, < L : LTS | transitions : (Trs, transition(Mapping[Tks], "XXX", state(Final))) >) 
+       fi
+     else 
+       bpmn2lts2(Process, TBVisited, Mapping, Index, Final, < L : LTS | >) 
+     fi
    [owise] .
 
   ---- Once the LTS is generated using the above bpmn2lts operation, tau transitions
@@ -184,15 +181,15 @@ omod BPMN-LTS is
   op eEliminate : Object -> Object .
   op eEliminateAux : Object -> Object .
   ceq eEliminate(
-       < L : LTS | transitions : (transition(St, "tau", St'), transition(St', Label, St''), Trs) >)
+       < L : LTS | transitions : (transition(St, "i", St'), transition(St', Label, St''), Trs) >)
     = eEliminate(
        < L : LTS | 
          transitions : 
-           (transition(St, "tau", St'), transition(St', Label, St''), transition(St, Label, St''), Trs) >) 
-    if not transition(St, Label, St'') in (transition(St, "tau", St'), transition(St', Label, St''), Trs) .
+           (transition(St, "i", St'), transition(St', Label, St''), transition(St, Label, St''), Trs) >) 
+    if not transition(St, Label, St'') in (transition(St, "i", St'), transition(St', Label, St''), Trs) .
   eq eEliminate(< L : LTS | >) = eEliminateAux(< L : LTS | >) [owise] .
 
-  eq eEliminateAux(< L : LTS | transitions : (transition(St, "tau", St'), Trs) >) 
+  eq eEliminateAux(< L : LTS | transitions : (transition(St, "i", St'), Trs) >) 
     = eEliminateAux(< L : LTS | transitions : Trs >) .
   ceq eEliminateAux(< L : LTS | initial : St, transitions : (transition(St', Label, St''), Trs) >) 
     = eEliminateAux(< L : LTS | transitions : Trs >) 
@@ -218,7 +215,7 @@ omod BPMN-LTS is
   op eEliminate : Object -> Object .
   op replace : State State Object -> Object .
 
-  eq eEliminate(< L : LTS | transitions : (transition(state(Ids), "tau", state(Ids')), Trs) >)
+  eq eEliminate(< L : LTS | transitions : (transition(state(Ids), "i", state(Ids')), Trs) >)
     = if Ids == Ids' 
       then eEliminate(< L : LTS | transitions : Trs >)
       else eEliminate(replace(state(Ids), state(Ids'), < L : LTS | transitions : Trs >)) 
@@ -265,8 +262,8 @@ omod BPMN-LTS is
   op eClosure : Set{State} Set{Transition} -> Set{State} .
   eq eClosure(< L : LTS | transitions : Trs >, St)
     = eClosure(St, Trs) .
- ceq eClosure((St, Sts), (transition(St, "tau", St'), Trs))
-    = eClosure((St, St', Sts), (transition(St, "tau", St'), Trs))
+ ceq eClosure((St, Sts), (transition(St, "i", St'), Trs))
+    = eClosure((St, St', Sts), (transition(St, "i", St'), Trs))
     if not St' in (St, Sts) .
   eq eClosure(Sts, Trs) = Sts [owise] .  
 
@@ -325,7 +322,7 @@ omod BPMN-LTS is
         if eClosureState(LTS, St) in (Sts, Sts') then Sts else (eClosureState(LTS, St), Sts) fi, 
         state((Id, Ids)), Sts', 
         Trs', (transition(state((Id, Ids)), Label, eClosureState(LTS, St)), Trs'')) 
-    if Label =/= "tau" .
+    if Label =/= "i" .
   ---- If there are no further transitions for the fixed state, it goes back to the eEliminate operation with the 
   ---- original set of transitions. 
   eq eEliminate2(LTS, St0, Trs, Sts, St, Sts', Trs', Trs'') 
@@ -338,6 +335,9 @@ omod BPMN-LTS is
 endom 
 
 eof
+set trace on .
+set trace select on .
+trace select bpmn2lts2 bpmn2lts3 .
 rew ndbisim(eEliminate(ex3), eEliminate(ex4)) . --- expected true
 rew ndbisim(eEliminate(ex5), eEliminate(ex6)) . --- expected true
 rew ndbisim(eEliminate(ex9), eEliminate(ex10)) . --- expected true

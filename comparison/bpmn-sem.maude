@@ -19,10 +19,25 @@ view Token from TRIV to TOKEN is
   sort Elt to Token .
 endv
 
+fmod BAG{X :: TRIV} is
+  protecting EXT-BOOL .
+  protecting NAT .
+  sorts NeBag{X} Bag{X} .
+  subsort X$Elt < NeBag{X} < Bag{X} .
+
+  op empty : -> Bag{X} [ctor] .
+  op _,_ : Bag{X} Bag{X} -> Bag{X} [ctor assoc comm id: empty prec 121 format (d r os d)] .
+  op _,_ : NeBag{X} Bag{X} -> NeBag{X} [ctor ditto] .
+endfm
+
+view Bag{X :: TRIV} from TRIV to BAG{X} is
+  sort Elt to Bag{X} .
+endv
+
 omod BPMN-SEM is
   pr BPMN-PROCESS .
   pr SET{Node} .
-  pr SET{Token} .
+  pr BAG{Token} .
   pr CONFIGURATION .
   pr (SET * (op empty to empty+, 
              op _,_ to _;_,
@@ -47,7 +62,7 @@ omod BPMN-SEM is
   vars SId : Id .
   vars Nodes : Set{Node} .
   vars Atts Atts1 Atts2 : AttributeSet .
-  vars Tks Tks' : Set{Token} .
+  vars Tks Tks' : Bag{Token} .
   vars TaskName : String .
   vars FIds FIds' Visited : Set{Id} .
   vars FIdsS FIdsS' : Set{Set{Id}} .
@@ -55,7 +70,7 @@ omod BPMN-SEM is
   vars GW : Gateway .
 
   ---- Simulation
-  class Simulation | tokens : Set{Token} .
+  class Simulation | tokens : Bag{Token} .
 
   ------------------------------------------------------------------------------
   ---- Initiation of the process
@@ -118,7 +133,7 @@ omod BPMN-SEM is
     [print "splitParallel " NId] .
 
   --- generates a token in the configuration for all outgoing flows
-  op generateTokensSplitParallel : Set{Id} -> Set{Token} .
+  op generateTokensSplitParallel : Set{Id} -> Bag{Token} .
   eq generateTokensSplitParallel(empty) = empty .
   eq generateTokensSplitParallel((FId, FIds))
     = (token(FId), generateTokensSplitParallel(FIds)) .
@@ -135,14 +150,14 @@ omod BPMN-SEM is
     [print "mergeParallel " NId] .
 
   ---- checks if there is a token for all incoming flows
-  op allTokensParallel : Set{Id} Set{Token} -> Bool .
+  op allTokensParallel : Set{Id} Bag{Token} -> Bool .
   eq allTokensParallel((FId, FIds), (token(FId), Tks))
     = allTokensParallel(FIds, Tks) .
   eq allTokensParallel(empty, Tks) = true .
   eq allTokensParallel(FIds, Tks) = false [owise] .
 
   ---- removes all the incoming tokens
-  op removeTokensParallel : Set{Id} Set{Token} -> Set{Token} .
+  op removeTokensParallel : Set{Id} Bag{Token} -> Bag{Token} .
   eq removeTokensParallel((FId, FIds), (token(FId), Tks))
     = (removeTokensParallel(FIds, Tks)) .
   eq removeTokensParallel(empty, Tks) = Tks .
@@ -162,9 +177,9 @@ omod BPMN-SEM is
 
 ---(
   --- generates at least a token in the configuration for one outgoing branch
-  op generateTokensSplitInclusive : Set{Id} -> Set{Token} .
+  op generateTokensSplitInclusive : Set{Id} -> Bag{Token} .
   --- non-determinism to generate possibly more tokens (all combinations)
-  op generateTokensSplitInclusiveBis : Set{Id} -> Set{Token} .
+  op generateTokensSplitInclusiveBis : Set{Id} -> Bag{Token} .
 
   rl generateTokensSplitInclusive((FId, FIds))
     => (token(FId), generateTokensSplitInclusiveBis(FIds)) .
@@ -200,62 +215,59 @@ omod BPMN-SEM is
 
   ---- for each branch, checks if there is a token and
   ---- if there is no token available, checks that we should not wait for one (backward traversal)
-  op allTokensInclusive : Set{Id} Set{Token} Set{Node} -> Bool .
+  op allTokensInclusive : Set{Id} Bag{Token} Set{Node} -> Bool .
   ---- checks if a given flow has an upstream token in the process
   ---- strategy: we move backward and check if every encountered flow has a corresponding token
-  op expectingToken : Id Set{Node} Set{Token} Set{Id} -> Bool .
-  --- checks if there at least one token in a set of flows
-  op expectingOneToken : Set{Id} Set{Node} Set{Token} Set{Id} -> Bool .
+  op expectingToken : Id Set{Node} Bag{Token} -> Bool .
+----  --- checks if there at least one token in a set of flows
+----  op expectingOneToken : Set{Id} Set{Node} Bag{Token} Set{Id} -> Bool .
   --- checks if a given token is present in the set of tokens (any FlowStamp)
-  op isToken : Id Set{Token} -> Bool .
+  op isToken : Id Bag{Token} -> Bool .
   --- removes all token consumed when the inclusive merge is triggered
-  op removeTokensInclusive : Set{Id} Set{Token} -> Set{Token} .
+  op removeTokensInclusive : Set{Id} Bag{Token} -> Bag{Token} .
   --- checks if a FId is in a set of FId
   op isInFIds : Id Set{Id} -> Bool [memo] .
 
-  eq allTokensInclusive(empty, Tks, Nodes) = true .   --- all the branches have been treated
-  eq allTokensInclusive((FId, FIds), (token(FId), Tks), Nodes)   --- there is a token for that branch
-    = allTokensInclusive(FIds, (token(FId), Tks), Nodes) .       --- we check for the other branches
-  ceq allTokensInclusive((FId, FIds), Tks, Nodes)     --- there is no token and we do not expect one
-    =  allTokensInclusive(FIds, Tks, Nodes)
-    if not(expectingToken(FId, Nodes, Tks, (FId))) .
-  eq allTokensInclusive(FIds, Tks, Nodes) = false [owise] .    --- there is no token and we expect one
+  eq allTokensInclusive(empty, Tks, Nodes) = true .   --- all branches have been treated
+  eq allTokensInclusive(FIds, empty, Nodes) = true .   --- no further tokens
+  eq allTokensInclusive((FId, FIds), (token(FId), Tks), Nodes) --- there is a token 
+    = allTokensInclusive(FIds, Tks, Nodes) .
+  eq allTokensInclusive((FId, FIds), Tks, Nodes)     --- there is no token and we do not expect one
+    = if expectingToken(FId, Nodes, Tks)
+      then false ---- if there is a token expected in that flow
+      else allTokensInclusive(FIds, Tks, Nodes)
+      fi 
+      [owise] .
 
-  --- token but time > 0
-  eq expectingToken(FId, Nodes, (token(FId), Tks), Visited) = true  .
+  --- I remove visited nodes, if I need one of them it's a false, it's either a loop or a path already followed by other flow
+  --- token found
+  eq expectingToken((FId, FIds), Nodes, (token(FId), Tks)) = true  .
   --- start event
-  eq expectingToken(FId, (start(NId, FId), Nodes), (token(NId), Tks), Visited) ---- init ?
-    = true .
-
+  eq expectingToken((FId, FIds), (start(NId, FId), Nodes), Tks) 
+   = isToken(FId, Tks) or-else expectingToken(FIds, Nodes, Tks) .
   --- task
-  ceq expectingToken(FId, (task(NId, TaskName, FId1, FId), Nodes), Tks, Visited)
-    = isToken(NId, Tks)
-      or-else
-      expectingToken(FId1, (task(NId, TaskName, FId1, FId), Nodes), Tks, (FId1, Visited))
-    if not(isInFIds(FId1, Visited)) .
-  eq expectingToken(FId, (task(NId, TaskName, FId1, FId), Nodes), Tks, Visited) = false [owise] .
-
-  --- split
+  eq expectingToken((FId, FIds), (task(NId, TaskName, FId1, FId), Nodes), Tks) 
+    = isToken(FId, Tks) or-else expectingToken((FId1, FIds), Nodes, Tks) .
+  --- split with all flows, no token found
+  --- eq expectingToken((FIds, FIds'), (split(NId, GW, FId, FIds), Nodes), Tks) 
+  ---   = expectingToken((FId, FIds'), Nodes, Tks) .
   --- for any split, we move to backwards search a token
-  ceq expectingToken(FId, (split(NId, GW, FId1, (FId, FIds)), Nodes), Tks, Visited)
-    = expectingToken(FId1, (split(NId, GW, FId1, (FId, FIds)), Nodes), Tks, (FId1, Visited))
-    if not(isInFIds(FId1, Visited)) .
-  eq expectingToken(FId, (split(NId, GW, FId1, (FId, FIds)), Nodes), Tks, Visited) = false [owise] .
-
+  eq expectingToken((FId, FIds), (split(NId, GW, FId', (FId, FIds')), Nodes), Tks)
+    = expectingToken((FId', FIds), Nodes, Tks) .
   --- merge
   --- for any kind of merge gateway, we look for at least one token in one branch
-  eq expectingToken(FId, (merge(NId, GW, FIds, FId), Nodes), Tks, Visited)
-    = expectingOneToken(FIds, (merge(NId, GW, FIds, FId), Nodes), Tks, Visited) .
-  eq expectingToken(FId, Nodes, Tks, Visited) = false [owise] .
+  eq expectingToken((FId, FIds), (merge(NId, GW, FIds', FId), Nodes), Tks)
+    = expectingToken((FIds', FIds), Nodes, Tks) .
+  eq expectingToken(FIds, Nodes, Tks) = false [owise] .
 
-  --- checks is there is at least one token given a set of flows upstream to a merge
-  eq expectingOneToken(empty, Nodes, Tks, Visited) = false .
-  ceq expectingOneToken((FId, FIds), Nodes, Tks, Visited)
-    = expectingToken(FId, Nodes, Tks, (FId, Visited))
-      or-else
-      expectingOneToken(FIds, Nodes, Tks, Visited)
-    if not(isInFIds(FId, Visited)) .
-  eq expectingOneToken((FId, FIds), Nodes, Tks, Visited) = false [owise] .
+----  --- checks is there is at least one token given a set of flows upstream to a merge
+----  eq expectingOneToken(empty, Nodes, Tks, Visited) = false .
+----  ceq expectingOneToken((FId, FIds), Nodes, Tks, Visited)
+----    = expectingToken(FId, Nodes, Tks, (FId, Visited))
+----      or-else
+----      expectingOneToken(FIds, Nodes, Tks, Visited)
+----    if not(isInFIds(FId, Visited)) .
+----  eq expectingOneToken((FId, FIds), Nodes, Tks, Visited) = false [owise] .
 
   ---- a given token is in the set of tokens ?
   eq isToken(FId, (token(FId), Tks)) = true .
@@ -269,13 +281,31 @@ omod BPMN-SEM is
   --- there is no token to remove for this flow
   eq removeTokensInclusive(FIds, Tks) = Tks [owise] .
 
-  --- checks if a FId is in a set of FId
-  eq isInFIds(FId, empty) = false .
-  eq isInFIds(FId, (FId2, FIds))
-    = (FId == FId2) or-else isInFIds(FId, FIds) .
+----  --- checks if a FId is in a set of FId
+----  eq isInFIds(FId, empty) = false .
+----  eq isInFIds(FId, (FId2, FIds))
+----    = (FId == FId2) or-else isInFIds(FId, FIds) .
+endom
+
+omod BPMN-SEM-TEST is
+  inc BPMN-SEM .
+  vars FId T : String .
+  eq token(FId, T) = token(FId) .
 endom
 
 eof
+rew < "inclusive-ex1" : Process | 
+          nodes : ( 
+                task("Activity_0dfs19f", "BBB", "Flow_18xvx68", "Flow_0pxric9"),
+                split("Gateway_1iuwgo7", inclusive, "Flow_1s6hxcx", ("Flow_033syii","Flow_18xvx68")),
+                task("Activity_167d0h4", "TASK1", "Flow_09jl1e0", "Flow_1s6hxcx"),
+                end("Event_090ljxz", "Flow_1wmxpfv"),
+                task("Activity_1banghu", "AAA", "Flow_033syii", "Flow_13rve6r"),
+                merge("Gateway_0hzvu28", inclusive, ("Flow_13rve6r","Flow_0pxric9"), "Flow_1wmxpfv"),
+                start("StartEvent_15xz2hn", "Flow_09jl1e0")
+                  ) > 
+                  < "s" : Simulation | tokens : token("Flow_1s6hxcx") > .
+
 srew < "inclusive-ex1" : Process | 
           nodes : ( 
                 task("Activity_0dfs19f", "BBB", "Flow_18xvx68", "Flow_0pxric9"),
@@ -286,7 +316,7 @@ srew < "inclusive-ex1" : Process |
                 merge("Gateway_0hzvu28", inclusive, ("Flow_13rve6r","Flow_0pxric9"), "Flow_1wmxpfv"),
                 start("StartEvent_15xz2hn", "Flow_09jl1e0")
                   ) > 
-                  < "s" : Simulation | tokens : token("Flow_1s6hxcx") > using all . 
+                  < "s" : Simulation | tokens : token("Flow_1s6hxcx") > using all * . 
 
 search [,1] < "inclusive-ex1" : Process | 
           nodes : ( 
